@@ -9,7 +9,10 @@ namespace SharpPyxis.SqlServer.Facets.Mcp;
 // every call, one round trip, so that an annotation made between two calls is seen.
 internal sealed partial class FacetsTools
 {
-    private const string NoConnection = "No connection is selected: call use_connection first.";
+    // Not an error: the state of a session that has not chosen yet, and what to do about it.
+    internal const string NoConnection =
+        "No database is chosen yet, so this call did nothing. Call use_connection to see the connections; "
+        + "when there are several, ask the user which one to work on.";
 
     /// <summary>The names of the levels, aggregations and operators as the tools take them.</summary>
     internal static readonly Dictionary<string, DateLevel> Levels =

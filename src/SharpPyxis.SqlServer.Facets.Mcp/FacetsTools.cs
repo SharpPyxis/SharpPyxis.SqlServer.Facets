@@ -11,47 +11,64 @@ namespace SharpPyxis.SqlServer.Facets.Mcp;
 /// The tools of the server, bound to one database at a time. Every result names the target it came
 /// from; no tool accepts SQL.
 /// </summary>
-internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionStore store, TimeSpan? selectionWait = null)
+internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionStore store)
 {
-    /// <summary>How long a call finding no connection waits for one to be chosen before refusing.</summary>
-    public static readonly TimeSpan DefaultSelectionWait = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// How long a call finding no connection gives a use_connection sent with it to start. It covers the
+    /// gap between two tasks started together, not the choice itself, which is waited for to its end.
+    /// </summary>
+    public static readonly TimeSpan ChoiceGrace = TimeSpan.FromMilliseconds(100);
 
     // The connection every tool works against. Null until one is chosen, which is what makes the
     // model ask instead of picking. A reference assignment is atomic, which is all the concurrency
     // this needs.
     private ActiveConnection? _active = OpenByDefault(settings, store);
 
-    // Completed by the first choice. The SDK runs each request on a task of its own, so a call sent in
-    // the same batch as use_connection reaches the tools before the choice is made: it waits for it
-    // rather than answer that none is selected.
-    private readonly TaskCompletionSource _firstSelection = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // The SDK runs each request on a task of its own, so a call sent in the same batch as use_connection
+    // may reach the tools before the choice is made. The choice under way, a completed task when there
+    // is none; and the signal of the next one, completed with it as soon as it starts.
+    private Task _choiceUnderWay = Task.CompletedTask;
+    private TaskCompletionSource<Task> _nextChoice = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private readonly TimeSpan _selectionWait = selectionWait ?? DefaultSelectionWait;
-
-    /// <summary>The chosen connection, waiting a little for one being chosen; null when none comes.</summary>
+    /// <summary>
+    /// The chosen connection. A call finding none waits for a choice under way to end, or starting
+    /// within <see cref="ChoiceGrace"/>; with no choice coming, it returns null at once.
+    /// </summary>
     private async Task<ActiveConnection?> ActiveAsync(CancellationToken cancellationToken)
     {
         if (_active is { } active)
             return active;
 
-        try
+        // Read in this order: a choice starting after the first read completes the signal it holds, and
+        // one started before the second read is seen by it.
+        var nextChoice = Volatile.Read(ref _nextChoice).Task;
+        var choice = Volatile.Read(ref _choiceUnderWay);
+
+        if (choice.IsCompleted)
         {
-            await _firstSelection.Task.WaitAsync(_selectionWait, cancellationToken);
-        }
-        catch (TimeoutException)
-        {
-            // Nothing was chosen: the caller says so.
+            using var grace = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (await Task.WhenAny(nextChoice, Task.Delay(ChoiceGrace, grace.Token)) == nextChoice)
+                choice = await nextChoice;
+
+            await grace.CancelAsync();
         }
 
+        await choice.WaitAsync(cancellationToken);
         return _active;
     }
 
-    private ActiveConnection Select(ConnectionEntry entry, string database)
+    // Marks a choice under way, and signals its start to the calls waiting for one.
+    private TaskCompletionSource BeginChoice()
     {
-        var chosen = _active = new ActiveConnection(entry, database);
-        _firstSelection.TrySetResult();
-        return chosen;
+        var choice = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Volatile.Write(ref _choiceUnderWay, choice.Task);
+        Interlocked.Exchange(ref _nextChoice, new(TaskCreationOptions.RunContinuationsAsynchronously))
+            .TrySetResult(choice.Task);
+        return choice;
     }
+
+    private ActiveConnection Select(ConnectionEntry entry, string database) =>
+        _active = new ActiveConnection(entry, database);
 
     /// <summary>
     /// Builds the tools with the connections appended to each description. A client that runs several
@@ -116,6 +133,24 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
         [Description("Database to work on, for a connection that names a server only: one the login can open. "
                    + "A connection that names a database stays on it.")]
         string? database = null)
+    {
+        // Listing chooses nothing. Any other call may, and the calls waiting for a choice learn when it
+        // ends, chosen or refused.
+        if (id is null)
+            return Choose(id, database);
+
+        var choice = BeginChoice();
+        try
+        {
+            return Choose(id, database);
+        }
+        finally
+        {
+            choice.SetResult();
+        }
+    }
+
+    private string Choose(int? id, string? database)
     {
         var connections = LoadConnections();
         if (connections.Count == 0)

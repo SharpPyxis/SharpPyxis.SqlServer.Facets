@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SharpPyxis.SqlServer.Facets.Mcp;
 
 namespace SharpPyxis.SqlServer.Facets.Tests;
@@ -13,9 +14,8 @@ public sealed class SelectionTests
     public async Task A_call_made_before_the_choice_waits_for_it()
     {
         var tools = ServerOnly();
-        var cancellationToken = TestContext.Current.CancellationToken;
 
-        var views = tools.ListViews(cancellationToken);
+        var views = tools.ListViews(TestContext.Current.CancellationToken);
         Assert.False(views.IsCompleted);
 
         tools.UseConnection(0, DemoDatabase.Name);
@@ -24,21 +24,36 @@ public sealed class SelectionTests
     }
 
     [Fact]
-    public async Task A_call_with_no_choice_coming_is_refused()
+    public async Task A_call_with_no_choice_coming_is_answered_at_once()
     {
-        var tools = ServerOnly(TimeSpan.FromMilliseconds(100));
+        var tools = ServerOnly();
+        var clock = Stopwatch.StartNew();
 
-        Assert.StartsWith("No connection is selected",
-            await tools.ListViews(TestContext.Current.CancellationToken));
+        var answer = await tools.ListViews(TestContext.Current.CancellationToken);
+
+        Assert.Equal(FacetsTools.NoConnection, answer);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"Answered after {clock.Elapsed}.");
+    }
+
+    [Fact]
+    public async Task A_choice_refused_releases_the_call_waiting_for_it()
+    {
+        var tools = ServerOnly();
+
+        var views = tools.ListViews(TestContext.Current.CancellationToken);
+        Assert.StartsWith("No database named no_such_database",
+            tools.UseConnection(0, "no_such_database"));
+
+        Assert.Equal(FacetsTools.NoConnection, await views.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken));
     }
 
     // A connection naming the server only: nothing is chosen until use_connection names a database,
     // and choosing one reads the server first.
-    private static FacetsTools ServerOnly(TimeSpan? selectionWait = null)
+    private static FacetsTools ServerOnly()
     {
         var entry = new ConnectionEntry { Id = 0, Server = DemoDatabase.Server, TrustServerCertificate = true };
         var settings = new FacetsSettings(FacetsSettings.DefaultMaxRows, UnusedConfigPath, entry);
-        return new FacetsTools(settings, new ConnectionStore(UnusedConfigPath), selectionWait);
+        return new FacetsTools(settings, new ConnectionStore(UnusedConfigPath));
     }
 
     private static readonly string UnusedConfigPath =
