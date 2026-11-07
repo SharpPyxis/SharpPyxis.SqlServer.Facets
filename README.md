@@ -6,10 +6,6 @@ Local MCP server that lets an AI agent query a SQL Server database through views
 never through SQL of its own: the agent names a view, dimensions, measures and filters, the server
 composes the SQL from a dictionary and runs it under a dedicated login.
 
-In development: no release yet. The database scripts, the engine and the MCP server are here and run
-on a demo database. The reading tools have been tried on a real database; the first release follows
-the trial of the writing tools.
-
 ## The idea
 
 An agent that analyses data needs the data. The question is how much of it leaves, and under whose
@@ -106,7 +102,7 @@ server.
 ### What is not there yet
 
 Exporting a panel of rows to a file on the workstation, and returning rows rather than aggregates to
-the model, wait for the first trials on a real database.
+the model, come in a later version.
 
 ## What it costs
 
@@ -119,15 +115,44 @@ says, under the login you declared. The dictionary is read again at every call, 
 
 ## Installation
 
-No release yet. The executable is built from the source:
+The MCP server is a single executable, `facets-mcp.exe`, of about 84 MB, for Windows x64. It contains
+the .NET runtime: nothing else needs to be installed on the machine. `THIRD-PARTY-NOTICES.md` lists
+what it contains.
+
+### From a release
+
+Each release of this repository publishes the executable, a file holding its SHA-256 fingerprint,
+and the notices of the .NET runtime it contains. The following block, run in PowerShell, downloads
+the executable of the latest release into `C:\Tools\Facets`, then checks its fingerprint. Change the
+folder if you prefer another one.
+
+```powershell
+$folder = 'C:\Tools\Facets'
+$release = 'https://github.com/SharpPyxis/SharpPyxis.SqlServer.Facets/releases/latest/download'
+New-Item -ItemType Directory -Force $folder | Out-Null
+Invoke-WebRequest "$release/facets-mcp.exe" -OutFile "$folder\facets-mcp.exe"
+Invoke-WebRequest "$release/facets-mcp.exe.sha256" -OutFile "$folder\facets-mcp.exe.sha256"
+$expected = (Get-Content "$folder\facets-mcp.exe.sha256").Split(' ')[0]
+$actual = (Get-FileHash "$folder\facets-mcp.exe" -Algorithm SHA256).Hash
+if ($actual -ne $expected) { Remove-Item "$folder\facets-mcp.exe"; throw 'Fingerprint mismatch: the executable was removed.' }
+"Fingerprint verified: $actual"
+```
+
+The executable and its fingerprint come from the same release. So the check proves that the download
+is complete and intact. It does not prove who built the file.
+
+The executable is not signed yet. On a machine where Smart App Control is on, Windows may block it.
+
+### From the source
+
+The executable is built with the following command:
 
 ```powershell
 dotnet publish src/SharpPyxis.SqlServer.Facets.Mcp -c Release -r win-x64 --self-contained `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o C:\Tools\Facets
 ```
 
-The result is a single executable, `facets-mcp.exe`, for Windows x64, holding the .NET runtime.
-`THIRD-PARTY-NOTICES.md` lists what it contains.
+The result is the same single executable as the one published in the releases.
 
 ### The connections
 
