@@ -67,8 +67,17 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
         return choice;
     }
 
-    private ActiveConnection Select(ConnectionEntry entry, string database) =>
-        _active = new ActiveConnection(entry, database);
+    // The working folder of the exports follows the connection: choosing the same one again keeps it,
+    // choosing another starts without one.
+    private ActiveConnection Select(ConnectionEntry entry, string database)
+    {
+        var previous = _active;
+        var selected = new ActiveConnection(entry, database);
+        if (previous is not null && previous.Entry.Id == entry.Id && string.Equals(previous.Database, database, StringComparison.OrdinalIgnoreCase))
+            selected.ExportFolder = previous.ExportFolder;
+
+        return _active = selected;
+    }
 
     /// <summary>
     /// Builds the tools with the connections appended to each description. A client that runs several
@@ -79,7 +88,7 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
     [
         CreateTool(nameof(UseConnection)), CreateTool(nameof(ServerInfo)),
         CreateTool(nameof(ReadDomainNote)), CreateTool(nameof(ListViews)), CreateTool(nameof(DescribeView)),
-        CreateTool(nameof(Query)),
+        CreateTool(nameof(Query)), CreateTool(nameof(UseExportFolder)),
         CreateTool(nameof(RefreshCatalog)), CreateTool(nameof(AnnotateView)), CreateTool(nameof(AnnotateColumn)),
         CreateTool(nameof(AnnotateValue)), CreateTool(nameof(WriteDomainNote)),
         CreateTool(nameof(AskQuestion)), CreateTool(nameof(AnswerQuestion)),
@@ -244,6 +253,7 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
             Connections: {connections}
             Rows returned by a query, at most: {settings.MaxRows} (FACETS_MAX_ROWS), unless the view sets its own
             Selected connection: {selected}
+            Exports of the selected connection: {(_active is { } current ? current.ExportPath : "none, no connection is selected")}
 
             Connections are managed from a console, as "{Environment.ProcessPath}" followed by:
             {Configurator.Commands}
@@ -268,6 +278,13 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
             + "What a view or a column means is in the dictionary: read it before asking, and ask the user when it does not say.";
 
         public string ConnectionString => Entry.BuildConnectionString(Database);
+
+        /// <summary>The working folder of the exports, under the root; null while none is chosen, the root itself then.</summary>
+        public volatile string? ExportFolder;
+
+        /// <summary>Where the next export goes: the root of the connection, and the working folder under it.</summary>
+        public string ExportPath =>
+            ExportFolder is { } folder ? Path.Combine(ExportLocation.Root(Entry, Database), folder) : ExportLocation.Root(Entry, Database);
 
         /// <summary>The warning when this login is an administrator; null otherwise.</summary>
         public string? AdministratorWarning =>

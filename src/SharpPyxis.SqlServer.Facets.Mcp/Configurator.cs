@@ -38,6 +38,7 @@ internal static class Configurator
             "remove" or "--remove" => Remove(store, arguments),
             "test" or "--test" => Test(store, arguments),
             "set-password" => SetPassword(store, arguments),
+            "set-export-root" => SetExportRoot(store, arguments),
             _ => Usage(store),
         };
     }
@@ -69,6 +70,7 @@ internal static class Configurator
             Label = label.Length == 0 ? null : label,
             TrustServerCertificate = trust,
         };
+        entry = entry with { ExportRoot = AskExportRoot(entry) };
 
         // A failed test does not throw the answers away: the instance may simply be down, and
         // retyping a password because of that is how a tool loses its user.
@@ -92,7 +94,7 @@ internal static class Configurator
 
         // Seeing them listed is also what shows where logins have been left lying around.
         foreach (var entry in connections)
-            Console.WriteLine($"{entry.Id}\t{entry.Describe()}");
+            Console.WriteLine($"{entry.Id}\t{entry.Describe()}\n\texports: {DescribeExportRoot(entry)}");
 
         Console.WriteLine($"File: {store.FilePath}");
         return 0;
@@ -118,11 +120,12 @@ internal static class Configurator
 
     /// <summary>The sub-commands as the help lists them, shared with server_info so the two never disagree.</summary>
     public const string Commands = """
-          configure add                 record a new connection, testing it first
-          configure list                show what is recorded
-          configure test [id]           test one recorded connection, or all of them
-          configure set-password <id>   replace the password of one connection
-          configure remove <id>         delete one connection
+          configure add                    record a new connection, testing it first
+          configure list                   show what is recorded
+          configure test [id]              test one recorded connection, or all of them
+          configure set-password <id>      replace the password of one connection
+          configure set-export-root <id>   choose the folder the exports of one connection go to
+          configure remove <id>            delete one connection
         """;
 
     private static int Usage(ConnectionStore store)
@@ -195,6 +198,53 @@ internal static class Configurator
         store.Replace(updated);
         Console.WriteLine($"Password of {id} replaced.");
         return 0;
+    }
+
+    private static int SetExportRoot(ConnectionStore store, string[] arguments)
+    {
+        if (arguments.Length < 3
+            || !int.TryParse(arguments[2], out var id)
+            || store.Load().FirstOrDefault(entry => entry.Id == id) is not { } existing)
+        {
+            Console.Error.WriteLine("Usage: configure set-export-root <id>");
+            return 1;
+        }
+
+        Console.WriteLine($"Exports of {existing.Describe()} go to {DescribeExportRoot(existing)}.");
+        store.Replace(existing with { ExportRoot = AskExportRoot(existing) });
+        Console.WriteLine($"Export root of {id} saved.");
+        return 0;
+    }
+
+    // The root is the user's. What keeps the agent from reading an export is the access its client gives
+    // it to the files, and the place where the user puts the root: said here, where the place is chosen.
+    private static string? AskExportRoot(ConnectionEntry entry)
+    {
+        var fallback = ExportLocation.DefaultRoot(entry);
+        Console.WriteLine("Exported files are written under a folder of this machine. An agent reads them only if its "
+                          + "client gives it access to that folder: keep it out of the folders opened to the agent, "
+                          + "unless the agent may read what is exported. A folder synced to a cloud, such as OneDrive, "
+                          + "sends the exports there.");
+
+        // Asked again rather than refused: the answers typed before, the password among them, are kept.
+        while (true)
+        {
+            var answer = Ask($"Export folder (empty for {fallback})");
+            if (answer.Length == 0)
+                return null;
+
+            if (Path.IsPathFullyQualified(answer))
+                return answer;
+
+            Console.Error.WriteLine("  A full path is needed, such as D:\\Exports\\Facets.");
+        }
+    }
+
+    private static string DescribeExportRoot(ConnectionEntry entry)
+    {
+        var root = ExportLocation.BaseRoot(entry);
+        var origin = entry.ExportRoot is null ? " (default)" : string.Empty;
+        return entry.Database is null ? $"{root}{origin}, one folder per database" : $"{root}{origin}";
     }
 
     // Failing here, in front of the person who typed the values, beats failing later inside a client

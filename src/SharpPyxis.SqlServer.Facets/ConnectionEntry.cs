@@ -32,6 +32,12 @@ public sealed record ConnectionEntry
     /// </summary>
     public bool TrustServerCertificate { get; init; }
 
+    /// <summary>
+    /// Where the exports of this connection go, as the user declared it; null for the default of
+    /// <see cref="ExportLocation.DefaultRoot"/>. A connection stored before version 0.3.0 has none.
+    /// </summary>
+    public string? ExportRoot { get; init; }
+
     /// <summary>What the model and the user read to tell one connection from another.</summary>
     public string Describe()
     {
