@@ -26,6 +26,8 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
     public IEnumerable<McpServerTool> CreateTools() =>
     [
         CreateTool(nameof(UseConnection)), CreateTool(nameof(ServerInfo)),
+        CreateTool(nameof(ReadDomainNote)), CreateTool(nameof(ListViews)), CreateTool(nameof(DescribeView)),
+        CreateTool(nameof(Query)),
     ];
 
     private McpServerTool CreateTool(string methodName)
