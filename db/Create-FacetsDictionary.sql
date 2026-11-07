@@ -10,6 +10,10 @@
 --                answers. The server reads it to compose its SQL, and writes it through the procedures
 --                of Create-FacetsDictionaryProcedures.sql, never directly.
 --
+-- A column enters the dictionary closed: export only, its name visible to the agent and its values
+-- never. Opening it to queries is the designer's gesture, an update of facets_dict.columns under their
+-- own login: the login of the server has no right to write a table, and its procedures only close.
+--
 -- Both schemas belong to dbo, on purpose. The login the server uses holds SELECT on the schema facets
 -- and reads the tables behind its views through ownership chaining, without any right on those tables;
 -- it holds EXECUTE on the procedures of facets_dict and writes its tables the same way. Create-FacetsLogin.sql
@@ -100,8 +104,9 @@ go
 -- ── columns ──────────────────────────────────────────────────────────────────────────────────────────
 -- One row per column of each view. The nature is null until someone sets it: the composer refuses a
 -- column without one, since it cannot tell what the column allows. Unit and divisor only make sense on
--- a measure, and the checks say so; a sensitive column may go to an exported file, never to the model,
--- and the two flags cannot both be set.
+-- a measure, and the checks say so. A column is export only until the designer opens it: its values
+-- may go to an exported file, never to the model. A column the agent must not see at all has no place
+-- in the view.
 create table facets_dict.columns
 (
     column_id           bigint            not null identity (1, 1),
@@ -114,8 +119,7 @@ create table facets_dict.columns
     nature_code         nvarchar(32)      null,
     unit                nvarchar(20)      not null constraint df_columns_unit default N'',
     divisor             decimal(18, 6)    not null constraint df_columns_divisor default 1,
-    is_exposed_to_model bit               not null constraint df_columns_is_exposed_to_model default 1,
-    is_sensitive        bit               not null constraint df_columns_is_sensitive default 0,
+    is_export_only      bit               not null constraint df_columns_is_export_only default 1,
     is_quarantined      bit               not null constraint df_columns_is_quarantined default 0,
     quarantined_at      datetimeoffset(3) null,
     last_seen_at        datetimeoffset(3) not null constraint df_columns_last_seen_at default sysdatetimeoffset(),
@@ -133,7 +137,6 @@ create table facets_dict.columns
     constraint ck_columns_unit_on_measure check (unit = N'' or isnull(nature_code, N'') in (N'amount', N'quantity', N'rate')),
     constraint ck_columns_divisor_on_measure check (divisor = 1 or isnull(nature_code, N'') in (N'amount', N'quantity')),
     constraint ck_columns_divisor_positive check (divisor > 0),
-    constraint ck_columns_sensitive_not_exposed check (is_sensitive = 0 or is_exposed_to_model = 0),
     constraint ck_columns_quarantine check ((is_quarantined = 0 and quarantined_at is null)
                                          or (is_quarantined = 1 and quarantined_at is not null))
 );
@@ -226,7 +229,7 @@ exec sys.sp_addextendedproperty @name = N'MS_Description',
     @value = N'The questions this view answers, in the words of a request: what the agent reads to choose a view.',
     @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'views', @level2type = N'COLUMN', @level2name = N'answers';
 exec sys.sp_addextendedproperty @name = N'MS_Description',
-    @value = N'0 hides the view from the agent while it is being annotated.',
+    @value = N'0 hides the view from the agent. The agent may hide a view; only the designer shows it again, under their own login.',
     @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'views', @level2type = N'COLUMN', @level2name = N'is_exposed_to_model';
 exec sys.sp_addextendedproperty @name = N'MS_Description',
     @value = N'1 when the last catalog refresh did not find the view in the schema. Its annotations wait for it.',
@@ -251,11 +254,8 @@ exec sys.sp_addextendedproperty @name = N'MS_Description',
     @value = N'What the stored value is divided by before it is shown: 100 for cents stored as integers. 1 on anything that is not an amount or a quantity.',
     @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'columns', @level2type = N'COLUMN', @level2name = N'divisor';
 exec sys.sp_addextendedproperty @name = N'MS_Description',
-    @value = N'0 keeps the column out of what the agent sees and queries.',
-    @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'columns', @level2type = N'COLUMN', @level2name = N'is_exposed_to_model';
-exec sys.sp_addextendedproperty @name = N'MS_Description',
-    @value = N'1 for a value that may go to a file exported on the workstation, never to the model: a name, an address, an e-mail. Never exposed to the model.',
-    @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'columns', @level2type = N'COLUMN', @level2name = N'is_sensitive';
+    @value = N'1, the default: the agent sees the name of the column, never its values, which may only go to a file exported on the workstation. 0 opens it to queries: the designer sets it, under their own login.',
+    @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'columns', @level2type = N'COLUMN', @level2name = N'is_export_only';
 exec sys.sp_addextendedproperty @name = N'MS_Description',
     @value = N'1 when the last catalog refresh did not find the column in its view. Its annotations wait for it.',
     @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'columns', @level2type = N'COLUMN', @level2name = N'is_quarantined';

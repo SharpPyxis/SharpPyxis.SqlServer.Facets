@@ -10,6 +10,10 @@
 -- changes one thing without restating the others. A procedure that cannot find what it is asked to
 -- annotate stops with error 50001 and names it.
 --
+-- The procedures close and never open: they hide a view and make a column export only, and stop with
+-- error 50002 when asked the reverse. Showing a view again, or opening a column to queries, is the
+-- designer's gesture, an update of the table under their own login.
+--
 -- Run it after Create-FacetsDictionary.sql, as an administrator of the database, and again at every
 -- version of the product: create or alter replaces each procedure in place.
 
@@ -123,6 +127,7 @@ go
 
 -- ── annotate_view ────────────────────────────────────────────────────────────────────────────────────
 -- What a view is and the questions it answers. A null parameter leaves the column as it is.
+-- @is_exposed_to_model takes 0 only: the view is hidden, and only the designer shows it again.
 create or alter procedure facets_dict.annotate_view
     @view_name           nvarchar(128),
     @author              nvarchar(128),
@@ -134,6 +139,9 @@ begin
     set nocount on;
     if not exists (select 1 from facets_dict.views where view_name = @view_name)
         throw 50001, N'The view is not in the dictionary: run refresh_catalog, or check its name.', 1;
+
+    if @is_exposed_to_model = 1
+        throw 50002, N'Only the designer shows a hidden view again, under their own login: the agent may only hide a view.', 1;
 
     update  facets_dict.views
     set     label               = isnull(@label, label),
@@ -147,8 +155,8 @@ go
 
 -- ── annotate_column ──────────────────────────────────────────────────────────────────────────────────
 -- What a column is: its nature first, then what the nature allows. A null parameter leaves the column
--- as it is. The checks of the table refuse a unit or a divisor outside a measure, and a sensitive
--- column exposed to the model.
+-- as it is. The checks of the table refuse a unit or a divisor outside a measure. @is_export_only
+-- takes 1 only: the column is closed, and only the designer opens it.
 create or alter procedure facets_dict.annotate_column
     @view_name           nvarchar(128),
     @column_name         nvarchar(128),
@@ -158,8 +166,7 @@ create or alter procedure facets_dict.annotate_column
     @nature_code         nvarchar(32) = null,
     @unit                nvarchar(20) = null,
     @divisor             decimal(18, 6) = null,
-    @is_exposed_to_model bit = null,
-    @is_sensitive        bit = null
+    @is_export_only      bit = null
 as
 begin
     set nocount on;
@@ -172,14 +179,16 @@ begin
     if @column_id is null
         throw 50001, N'The column is not in the dictionary: run refresh_catalog, or check the names of the view and the column.', 1;
 
+    if @is_export_only = 0
+        throw 50002, N'Only the designer opens a column to queries, under their own login: the agent may only make it export only.', 1;
+
     update  facets_dict.columns
     set     label               = isnull(@label, label),
             description         = isnull(@description, description),
             nature_code         = isnull(@nature_code, nature_code),
             unit                = isnull(@unit, unit),
             divisor             = isnull(@divisor, divisor),
-            is_exposed_to_model = isnull(@is_exposed_to_model, is_exposed_to_model),
-            is_sensitive        = isnull(@is_sensitive, is_sensitive),
+            is_export_only      = isnull(@is_export_only, is_export_only),
             modified_at         = sysdatetimeoffset(),
             modified_by         = @author
     where   column_id = @column_id;

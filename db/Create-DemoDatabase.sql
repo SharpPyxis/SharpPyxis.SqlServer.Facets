@@ -204,13 +204,13 @@ exec facets_dict.annotate_value N'v_sales', N'status', N'C', @by, @label = N'Can
 exec facets_dict.annotate_value N'v_sales', N'category', N'furniture', @by, @label = N'Furniture';
 exec facets_dict.annotate_value N'v_sales', N'category', N'lighting',  @by, @label = N'Lighting';
 
--- v_customers: a sensitive column, and a column left without a nature.
+-- v_customers: a column that stays export only, and a column left without a nature.
 exec facets_dict.annotate_view N'v_customers', @by, @label = N'Customers, one row each',
     @answers = N'Who the customers are, where, since when, how much each has bought.';
 exec facets_dict.annotate_column N'v_customers', N'customer_id', @by, @nature_code = N'identifier', @label = N'Customer';
 exec facets_dict.annotate_column N'v_customers', N'name',        @by, @nature_code = N'label',      @label = N'Name';
--- The e-mail may go to an exported file, never to the model: sensitive, and therefore not exposed.
-exec facets_dict.annotate_column N'v_customers', N'email',       @by, @nature_code = N'label',      @label = N'E-mail', @is_sensitive = 1, @is_exposed_to_model = 0;
+-- The e-mail may go to an exported file, never to the model: the designer leaves it export only.
+exec facets_dict.annotate_column N'v_customers', N'email',       @by, @nature_code = N'label',      @label = N'E-mail';
 exec facets_dict.annotate_column N'v_customers', N'city',        @by, @nature_code = N'label',      @label = N'City';
 exec facets_dict.annotate_column N'v_customers', N'is_active',   @by, @nature_code = N'boolean',    @label = N'Active';
 -- created_on is left without a nature, on purpose: the server refuses a column it cannot read.
@@ -219,6 +219,19 @@ exec facets_dict.annotate_column N'v_customers', N'paid_cents',  @by, @nature_co
 
 -- v_margins: hidden whole.
 exec facets_dict.annotate_view N'v_margins', @by, @label = N'Margins per product', @is_exposed_to_model = 0;
+
+-- ── The designer opens the columns the agent may query ───────────────────────────────────────────────
+-- Every column entered the dictionary export only. Opening one is the designer's gesture, an update of
+-- the table under their own login: the login of the server has no right on it, and the procedures only
+-- close. Everything is opened here but the e-mail; v_margins stays hidden, its columns closed.
+update  c
+set     is_export_only = 0,
+        modified_at    = sysdatetimeoffset(),
+        modified_by    = @by
+from    facets_dict.columns as c
+join    facets_dict.views as w on w.view_id = c.view_id
+where   w.view_name in (N'v_sales', N'v_customers')
+and     c.column_name <> N'email';
 
 -- A question an agent asked, and its answer.
 declare @question table (question_id bigint);
