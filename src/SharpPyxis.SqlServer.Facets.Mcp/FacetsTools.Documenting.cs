@@ -206,12 +206,14 @@ internal sealed partial class FacetsTools
 
     // What a procedure or a constraint refused, in words the agent can act on. 50001 is the procedures'
     // own error, already worded; 547 is a check or a foreign key, named in the message and translated here.
-    private static string Explain(SqlException exception)
-    {
-        if (exception.Number == 50001)
-            return $"Refused: {exception.Message}";
+    private static string Explain(SqlException exception) => Explain(exception.Number, exception.Message);
 
-        if (exception.Number == 547 && ConstraintName().Match(exception.Message) is { Success: true } match)
+    internal static string Explain(int number, string message)
+    {
+        if (number == 50001)
+            return $"Refused: {message}";
+
+        if (number == 547 && ConstraintName().Match(message) is { Success: true } match)
             return "Refused: " + match.Groups[1].Value switch
             {
                 "ck_columns_unit_on_measure" => "a unit applies to an amount, a quantity or a rate only.",
@@ -224,7 +226,7 @@ internal sealed partial class FacetsTools
                 var name => $"the database refused it ({name}).",
             };
 
-        return $"Failed: {exception.Message}";
+        return $"Failed: {message}";
     }
 
     [GeneratedRegex("constraint \"([^\"]+)\"")]

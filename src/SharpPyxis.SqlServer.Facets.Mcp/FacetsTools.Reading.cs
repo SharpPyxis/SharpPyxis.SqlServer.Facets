@@ -12,13 +12,13 @@ internal sealed partial class FacetsTools
     private const string NoConnection = "No connection is selected: call use_connection first.";
 
     /// <summary>The names of the levels, aggregations and operators as the tools take them.</summary>
-    private static readonly Dictionary<string, DateLevel> Levels =
+    internal static readonly Dictionary<string, DateLevel> Levels =
         Enum.GetValues<DateLevel>().ToDictionary(level => level.ToString().ToLowerInvariant(), level => level, StringComparer.OrdinalIgnoreCase);
 
-    private static readonly Dictionary<string, Aggregation> Aggregations =
+    internal static readonly Dictionary<string, Aggregation> Aggregations =
         Enum.GetValues<Aggregation>().ToDictionary(SqlComposer.Word, aggregation => aggregation, StringComparer.OrdinalIgnoreCase);
 
-    private static readonly Dictionary<string, FilterOperator> Operators =
+    internal static readonly Dictionary<string, FilterOperator> Operators =
         Enum.GetValues<FilterOperator>().ToDictionary(SqlComposer.Word, filterOperator => filterOperator, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Lists the views the agent may query.</summary>
@@ -183,7 +183,7 @@ internal sealed partial class FacetsTools
     }
 
     // A word the request does not know is a fault with the words it may use; null means "not given".
-    private static T? Parse<T>(Dictionary<string, T> words, string? word, string what, List<string> faults) where T : struct
+    internal static T? Parse<T>(Dictionary<string, T> words, string? word, string what, List<string> faults) where T : struct
     {
         if (word is null or { Length: 0 })
             return null;

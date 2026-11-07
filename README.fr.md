@@ -6,8 +6,9 @@ Serveur MCP local qui permet à un agent IA d'interroger une base SQL Server à 
 agrège, jamais par du SQL à lui : l'agent nomme une vue, des dimensions, des mesures et des filtres,
 le serveur compose le SQL depuis un dictionnaire et l'exécute sous un login dédié.
 
-En cours de développement. Rien n'est publié : `db/` porte ce que le serveur lira, et s'installe et
-s'essaie seul.
+En cours de développement : pas de version publiée. Les scripts de base, le moteur et le serveur MCP
+sont là et tournent sur une base de démonstration ; le premier essai sur une base réelle est l'étape
+suivante.
 
 ## L'idée
 
@@ -26,9 +27,39 @@ contrôle de qui. Facets répond par trois choses :
 L'agent ne fournit jamais un identifiant SQL. Il nomme des choses du dictionnaire ; le serveur y prend
 les identifiants et passe les valeurs en paramètres.
 
+Ce serveur est le pendant de [SharpPyxis.SqlServer.SchemaMcp](https://github.com/SharpPyxis/SharpPyxis.SqlServer.SchemaMcp),
+qui lit la structure d'une base et jamais ses données. Les deux s'emploient ensemble : SchemaMcp pour
+écrire les vues, Facets pour les interroger. Ils ne partagent rien sur le poste : chacun a son login
+et son fichier de connexions.
+
+## Où ça tourne
+
+Le serveur MCP est un programme sur le poste de la personne qui dialogue avec l'agent. Le client MCP,
+l'application d'IA, le lance et lui parle par son entrée et sa sortie standard. Le serveur n'ouvre
+aucun port réseau ; sa seule connexion est celle qu'il établit vers l'instance SQL Server, avec le
+login que vous avez déclaré. Rien n'est installé sur l'instance en dehors des deux schémas et du login.
+
+## Ce qui garantit ce que l'agent lit
+
+Deux protections, et une seule fait la garantie.
+
+La première est le code de ce serveur : aucun outil n'accepte de SQL, et chaque requête est composée
+depuis le dictionnaire, les identifiants pris dedans et les valeurs passées en paramètres. Une colonne
+que le dictionnaire cache, ou marque sensible, n'est jamais lue ; une colonne sans nature n'est
+jamais interrogée.
+
+La seconde est faite des droits du login, et celle-là tient même si le code avait un défaut ou avait
+été modifié. Le login de `Create-FacetsLogin.sql` détient `SELECT` sur le schéma `facets`, `SELECT` et
+`EXECUTE` sur le schéma `facets_dict`, et rien d'autre. Il lit les tables derrière les vues par la
+chaîne de propriétaires, sans droit dessus ; il écrit le dictionnaire par ses procédures, sans droit
+sur ses tables. `Verify-FacetsRights.sql`, passé sous ce login, le prouve en six contrôles.
+
+Un login administrateur, `sysadmin` ou `db_owner`, lit tout : le serveur le dit quand un tel login est
+déclaré, et encore dans le premier résultat après sa sélection.
+
 ## La base
 
-Quatre scripts, dans le dossier `db/`, à passer dans cet ordre dans la base à exposer. Chacun est
+Cinq scripts, dans le dossier `db/`, à passer dans cet ordre dans la base à exposer. Chacun est
 commenté en détail et dit ce qu'il attend avant de tourner.
 
 1. `Create-FacetsDictionary.sql` crée les deux schémas, `facets` vide et `facets_dict` avec ses six
@@ -38,18 +69,141 @@ commenté en détail et dit ce qu'il attend avant de tourner.
    quarantaine ce qui a disparu sans rien supprimer, `annotate_view`, `annotate_column`,
    `annotate_value`, `write_domain_note`, `ask_question` et `answer_question`. À repasser à chaque
    version du produit.
-3. `Create-FacetsLogin.sql` crée le login, en mode SQLCMD, et accorde à son rôle trois droits :
-   `SELECT` sur `facets`, `SELECT` et `EXECUTE` sur `facets_dict`. Les deux schémas appartiennent à
-   `dbo` : le login lit les tables derrière les vues et écrit celles du dictionnaire sans aucun droit
-   dessus.
-4. `Verify-FacetsRights.sql` tourne **sous ce login** et rend six verdicts : il voit les vues de
+3. `Create-DemoDatabase.sql`, facultatif, pour essayer le serveur sans une base qui compte : une
+   petite boutique avec des lignes, trois vues qui couvrent les neuf natures, et le dictionnaire
+   annoté par les procédures, comme un agent le ferait.
+4. `Create-FacetsLogin.sql` crée le login, en mode SQLCMD, et accorde à son rôle les trois droits
+   ci-dessus.
+5. `Verify-FacetsRights.sql` tourne **sous ce login** et rend six verdicts : il voit les vues de
    `facets`, lit une vue et aucune table, lit le dictionnaire, ne l'écrit que par les procédures,
    n'écrit rien d'autre, et n'est pas administrateur. À passer après une première vue dans `facets`.
 
-`Create-DemoDatabase.sql` est un cinquième script, pour essayer le serveur sans une base qui compte :
-une petite boutique avec des lignes, trois vues qui couvrent les neuf natures, et le dictionnaire
-annoté par les procédures, comme un agent le ferait. Il passe après les deux premiers scripts, avant
-le login.
+Écrivez ensuite vos vues dans le schéma `facets`, une par question que l'agent doit savoir traiter,
+avec ou sans SchemaMcp ; passez `refresh_catalog` ; et annotez-les, en SQL ou en disant à l'agent ce
+que chacune est.
+
+## Ce que l'agent obtient
+
+Treize outils. Chaque résultat nomme la base dont il vient.
+
+| Outil | Ce qu'il fait |
+| --- | --- |
+| `use_connection` | Liste les connexions déclarées, ou en sélectionne une. |
+| `server_info` | L'exécutable, sa version, où sont les connexions, les commandes qui les gèrent. |
+| `read_domain_note` | Ce que le propriétaire a écrit sur les données dans leur ensemble, et les questions générales avec leurs réponses. |
+| `list_views` | Les vues que l'agent peut interroger, avec ce que chacune est et les questions auxquelles elle répond. |
+| `describe_view` | Les colonnes d'une vue : nature, libellé, description, unité, ce que le serveur permet sur chacune, les valeurs de ses codes, les questions posées dessus. |
+| `query` | Une requête agrégée : une vue, des dimensions, des mesures, des filtres, un tri, un top. Les lignes viennent séparées par des tabulations, les montants dans leur unité, plafonnées par le serveur. |
+| `refresh_catalog` | Aligne le dictionnaire sur les vues de `facets` : ajoute ce qui est nouveau, met en quarantaine ce qui a disparu, ne supprime rien. |
+| `annotate_view`, `annotate_column`, `annotate_value` | Écrivent ce qu'une vue, une colonne ou une valeur d'un code signifie. Un paramètre omis ne change rien. |
+| `write_domain_note` | Remplace la note sur les données dans leur ensemble. |
+| `ask_question`, `answer_question` | Enregistrent ce que le dictionnaire ne disait pas, et la réponse quand le propriétaire la donne. |
+
+Une requête ne nomme que ce que `describe_view` a montré. Tout le reste, ou tout ce qu'une nature
+n'autorise pas, revient comme un refus qui nomme toutes les fautes d'un coup : l'agent corrige la
+requête au lieu de la réessayer. Chaque écriture enregistre qui a écrit : le client MCP, tel qu'il
+s'est présenté au serveur.
+
+### Ce qui n'y est pas encore
+
+L'export d'un panel de lignes vers un fichier du poste, et le retour de lignes plutôt que d'agrégats
+au modèle, attendent les premiers essais sur une base réelle.
+
+## Ce que ça coûte
+
+Au modèle d'IA : une requête rend des lignes séparées par des tabulations avec une ligne d'en-tête,
+au plus le plafond du serveur, 200 lignes sauf si `FACETS_MAX_ROWS` en décide autrement. L'agent ne
+peut pas le relever. `describe_view` coûte une ligne par colonne.
+
+À l'instance SQL Server : une requête par appel, sur une vue, groupée et filtrée comme la demande le
+dit, sous le login que vous avez déclaré. Le dictionnaire est relu à chaque appel, un aller-retour.
+
+## Installation
+
+Pas de version publiée. L'exécutable se construit depuis les sources :
+
+```powershell
+dotnet publish src/SharpPyxis.SqlServer.Facets.Mcp -c Release -r win-x64 --self-contained `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o C:\Tools\Facets
+```
+
+Le résultat est un exécutable unique, `facets-mcp.exe`, pour Windows x64, qui embarque le runtime
+.NET. `THIRD-PARTY-NOTICES.md` liste ce qu'il contient.
+
+### Les connexions
+
+Les connexions se déclarent dans une console, avec l'exécutable lui-même. Vous y tapez le nom de
+l'instance, la base, le login et le mot de passe. Le serveur MCP ne les demande jamais pendant une
+conversation, et l'agent ne les voit jamais.
+
+```text
+facets-mcp configure add                 record a new connection, testing it first
+facets-mcp configure list                show what is recorded
+facets-mcp configure test [id]           test one recorded connection, or all of them
+facets-mcp configure set-password <id>   replace the password of one connection
+facets-mcp configure remove <id>         delete one connection
+```
+
+Les connexions sont rangées dans un fichier chiffré par DPAPI, le mécanisme de chiffrement de
+Windows, pour le compte Windows courant. Ce chiffrement protège le fichier s'il est volé, ou exposé
+par accident : copié ailleurs, pris dans une sauvegarde, montré pendant un partage d'écran. Un
+programme qui tourne sous le même compte Windows peut en revanche le déchiffrer, exactement comme le
+serveur MCP le fait. Ce niveau de protection est proportionné à ce que le mot de passe permet : lire
+les vues que le propriétaire a choisi d'exposer, et écrire leur dictionnaire.
+
+Le fichier ne se déchiffre ni depuis un autre compte Windows, ni sur une autre machine. Si vous
+changez de poste, les connexions sont à redéclarer.
+
+### Le client
+
+Le client est l'application d'IA qui lance le serveur MCP. Chaque client déclare ses serveurs MCP dans
+un fichier de configuration à lui, dont le format diffère d'un client à l'autre, et parfois d'une
+version à la suivante. Ce README le décrit donc pour aucun client en particulier. La déclaration
+dépend de l'application, quel que soit le modèle d'IA qu'elle fait tourner.
+
+La déclaration tient en trois informations, les mêmes pour tous les clients :
+
+- un nom pour le serveur MCP, par exemple `sqlserver-facets`. Le client s'en sert pour désigner les
+  outils du serveur ;
+- la commande qui lance le serveur MCP : le chemin complet de l'exécutable, par exemple
+  `C:\Tools\Facets\facets-mcp.exe` ;
+- la variable d'environnement `FACETS_CONFIG_PATH`, qui dit où est le fichier de connexions. Elle est
+  facultative : sans elle, le fichier est dans le dossier `%APPDATA%` de votre compte, où `configure`
+  l'écrit par défaut.
+
+Le plus simple est de demander à l'agent de votre client d'écrire cette déclaration. Donnez-lui ces
+trois informations, et demandez-lui où son application déclare les serveurs MCP locaux. L'agent
+connaît généralement l'application dans laquelle il tourne, et il sait lire son fichier de
+configuration. Ce qu'il sait peut dater d'une version antérieure, comme la documentation en ligne : le
+contrôle ci-dessous tranche.
+
+La plupart des clients lisent leur configuration au démarrage. Relancez le vôtre après la déclaration,
+puis demandez à l'agent quelle version du serveur MCP tourne. Pour répondre, l'agent appelle l'outil
+`server_info`, qui rend le chemin de l'exécutable, sa version et la connexion sélectionnée. Si l'agent
+ne trouve pas cet outil, le client n'a pas chargé le serveur MCP.
+
+Si vous avez déclaré plusieurs connexions, aucune n'est choisie au démarrage. L'agent vous demande
+alors sur quelle base travailler, et il n'en change que lorsque vous le lui demandez.
+
+Quatre variables d'environnement règlent le serveur MCP :
+
+| Variable | Rôle |
+| --- | --- |
+| `FACETS_CONFIG_PATH` | Où est le fichier de connexions. Facultative. |
+| `FACETS_MAX_ROWS` | Le nombre maximal de lignes d'une réponse, 200 par défaut. L'agent ne peut pas le changer. |
+| `CONNECTION_STRING` | Une connexion unique, déclarée sans le fichier. Elle sert là où DPAPI n'existe pas, hors de Windows. Le mot de passe est alors en clair dans la configuration du client. |
+| `FACETS_DESCRIPTION` | Un libellé pour cette connexion unique, en mots. Facultative. |
+
+## Tests
+
+```powershell
+dotnet test --solution SharpPyxis.SqlServer.Facets.slnx -c Release
+```
+
+Les tests d'intégration ont besoin de LocalDB. Ils créent la base de démonstration depuis les scripts
+de `db/`, font tourner le moteur et les outils dessus, puis la suppriment. Ils tournent en
+authentification Windows : les droits du login sont prouvés par `Verify-FacetsRights.sql`, pas par
+les tests.
 
 ## Licence
 

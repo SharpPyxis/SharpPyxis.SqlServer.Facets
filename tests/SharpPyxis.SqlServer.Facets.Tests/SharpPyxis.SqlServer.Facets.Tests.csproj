@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/SharpPyxis.SqlServer.Facets/SharpPyxis.SqlServer.Facets.csproj" />
+    <ProjectReference Include="../../src/SharpPyxis.SqlServer.Facets.Mcp/SharpPyxis.SqlServer.Facets.Mcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
