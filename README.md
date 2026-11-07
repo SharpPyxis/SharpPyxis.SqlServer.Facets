@@ -7,7 +7,8 @@ never through SQL of its own: the agent names a view, dimensions, measures and f
 composes the SQL from a dictionary and runs it under a dedicated login.
 
 In development: no release yet. The database scripts, the engine and the MCP server are here and run
-on a demo database; the first trial on a real database is the next step.
+on a demo database. The reading tools have been tried on a real database; the first release follows
+the trial of the writing tools.
 
 ## The idea
 

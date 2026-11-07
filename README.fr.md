@@ -7,8 +7,8 @@ agrège, jamais par du SQL à lui : l'agent nomme une vue, des dimensions, des m
 le serveur compose le SQL depuis un dictionnaire et l'exécute sous un login dédié.
 
 En cours de développement : pas de version publiée. Les scripts de base, le moteur et le serveur MCP
-sont là et tournent sur une base de démonstration ; le premier essai sur une base réelle est l'étape
-suivante.
+sont là et tournent sur une base de démonstration. Les outils de lecture ont été essayés sur une base
+réelle ; la première version suivra l'essai des outils d'écriture.
 
 ## L'idée
 
