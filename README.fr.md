@@ -93,7 +93,7 @@ Treize outils. Chaque résultat nomme la base dont il vient.
 | `read_domain_note` | Ce que le propriétaire a écrit sur les données dans leur ensemble, et les questions générales avec leurs réponses. |
 | `list_views` | Les vues que l'agent peut interroger, avec ce que chacune est et les questions auxquelles elle répond. |
 | `describe_view` | Les colonnes d'une vue : nature, libellé, description, unité, ce que le serveur permet sur chacune, les valeurs de ses codes, les questions posées dessus. |
-| `query` | Une requête agrégée : une vue, des dimensions, des mesures, des filtres, un tri, un top. Les lignes viennent séparées par des tabulations, les montants dans leur unité, plafonnées par le serveur. |
+| `query` | Une requête agrégée : une vue, des dimensions, des mesures, des filtres, un tri, un top. Les lignes viennent séparées par des tabulations, les montants dans leur unité et au centime, plafonnées par le serveur. |
 | `refresh_catalog` | Aligne le dictionnaire sur les vues de `facets` : ajoute ce qui est nouveau, met en quarantaine ce qui a disparu, ne supprime rien. |
 | `annotate_view`, `annotate_column`, `annotate_value` | Écrivent ce qu'une vue, une colonne ou une valeur d'un code signifie. Un paramètre omis ne change rien. |
 | `write_domain_note` | Remplace la note sur les données dans leur ensemble. |

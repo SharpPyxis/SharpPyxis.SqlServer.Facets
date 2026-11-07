@@ -32,7 +32,7 @@ public static class QueryRunner
 
             var row = new string[query.Columns.Count];
             for (var i = 0; i < row.Length; i++)
-                row[i] = Format(reader.IsDBNull(i) ? null : reader.GetValue(i), query.Columns[i].Divisor);
+                row[i] = Format(reader.IsDBNull(i) ? null : reader.GetValue(i), query.Columns[i].Divisor, query.Columns[i].Decimals);
             rows.Add(row);
         }
 
@@ -41,17 +41,18 @@ public static class QueryRunner
 
     /// <summary>
     /// One value as the model reads it: invariant culture, no thousands separator, dates without a
-    /// midnight time, numbers divided by the divisor of their column, null as an empty cell.
+    /// midnight time, numbers divided by the divisor of their column then rounded to its decimals when
+    /// it has any, null as an empty cell.
     /// </summary>
-    public static string Format(object? value, decimal divisor) => value switch
+    public static string Format(object? value, decimal divisor, int? decimals = null) => value switch
     {
         null => string.Empty,
         bool b => b ? "true" : "false",
         byte or short or int or long => divisor == 1
             ? Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)
-            : Number(Convert.ToDecimal(value, CultureInfo.InvariantCulture) / divisor),
-        decimal d => Number(d / divisor),
-        float or double => Number((decimal)Convert.ToDouble(value, CultureInfo.InvariantCulture) / divisor),
+            : Number(Convert.ToDecimal(value, CultureInfo.InvariantCulture) / divisor, decimals),
+        decimal d => Number(d / divisor, decimals),
+        float or double => Number((decimal)Convert.ToDouble(value, CultureInfo.InvariantCulture) / divisor, decimals),
         DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         DateTime d => d.TimeOfDay == TimeSpan.Zero
             ? d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
@@ -62,9 +63,14 @@ public static class QueryRunner
         _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty,
     };
 
-    // Trailing zeros are noise the model pays for: 120.50 reads as 120.5, 3.000000 as 3.
-    private static string Number(decimal number)
+    // Rounded half away from zero, as T-SQL rounds: the banker's rounding of Math.Round would part
+    // from the database on an exact half cent. Trailing zeros are noise the model pays for: 120.50
+    // reads as 120.5, 3.000000 as 3.
+    private static string Number(decimal number, int? decimals)
     {
+        if (decimals is { } places)
+            number = Math.Round(number, places, MidpointRounding.AwayFromZero);
+
         var text = number.ToString(CultureInfo.InvariantCulture);
         return text.Contains('.') ? text.TrimEnd('0').TrimEnd('.') : text;
     }

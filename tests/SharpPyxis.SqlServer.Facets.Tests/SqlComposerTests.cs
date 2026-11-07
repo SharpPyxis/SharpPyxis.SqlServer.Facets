@@ -118,17 +118,50 @@ public sealed class SqlComposerTests(DemoDatabase database)
             [
                 new("product_name", FilterOperator.Contains, ["50%_[a]"]),
                 new("product_sku", FilterOperator.In, ["CHAIR-OAK", "LAMP-BRASS"]),
-                new("unit_price_cents", FilterOperator.GreaterOrEqual, ["10000"]),
+                new("quantity", FilterOperator.GreaterOrEqual, ["10"]),
                 new("note", FilterOperator.Empty, []),
             ],
         }, 200);
 
         Assert.Contains(@"[product_name] like @p0 escape N'\'", query.Sql);
         Assert.Contains("[product_sku] in (@p1, @p2)", query.Sql);
-        Assert.Contains("[unit_price_cents] >= @p3", query.Sql);
+        Assert.Contains("[quantity] >= @p3", query.Sql);
         Assert.Contains("([note] is null or [note] = N'')", query.Sql);
         Assert.Equal(@"%50\%\_\[a]%", query.Parameters[0].Value);
         Assert.Equal(System.Data.SqlDbType.VarChar, query.Parameters[1].Type);
-        Assert.Equal(10000L, query.Parameters[3].Value);
+        Assert.Equal(System.Data.SqlDbType.Decimal, query.Parameters[3].Type);
+        Assert.Equal(10m, query.Parameters[3].Value);
+    }
+
+    [Fact]
+    public async Task Takes_a_filter_on_an_amount_in_its_unit()
+    {
+        var catalog = await CatalogAsync();
+        var query = SqlComposer.Compose(catalog, new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("line_amount_cents", Aggregation.Sum)],
+            Filters =
+            [
+                new("line_amount_cents", FilterOperator.Between, ["120.5", "1000.005"]),
+                new("unit_price", FilterOperator.Less, ["12.345678"]),
+            ],
+        }, 200);
+
+        // Euros on a column of cents: the divisor goes back on the value, and a fraction of a cent stays.
+        Assert.Contains("[line_amount_cents] between @p0 and @p1", query.Sql);
+        Assert.Equal(System.Data.SqlDbType.Decimal, query.Parameters[0].Type);
+        Assert.Equal(12050m, query.Parameters[0].Value);
+        Assert.Equal(100000.5m, query.Parameters[1].Value);
+        // A rate has no divisor: its value is taken as it is.
+        Assert.Equal(12.345678m, query.Parameters[2].Value);
+
+        var refusal = Refusal(catalog, new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("line_amount_cents", Aggregation.Sum)],
+            Filters = [new("line_amount_cents", FilterOperator.Equals, ["ten"])],
+        });
+        Assert.Contains("'ten' is not a number for 'line_amount_cents'.", refusal.Faults);
     }
 }

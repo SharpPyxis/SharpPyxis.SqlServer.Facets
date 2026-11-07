@@ -62,7 +62,7 @@ insert into facets_dict.nature (nature_code, nature_label, nature_description, s
 values
     (N'amount',     N'Amount',     N'Money. Sums and averages make sense. Unit and divisor apply.', 1),
     (N'quantity',   N'Quantity',   N'A count, or a measured quantity. Sums and averages make sense. Unit and divisor apply.', 2),
-    (N'rate',       N'Rate',       N'A ratio or a percentage. Averaged, never summed. Unit applies.', 3),
+    (N'rate',       N'Rate',       N'A ratio, a percentage, or a unit price, which keeps its precision where an amount is given to the cent. Averaged, never summed. Unit applies.', 3),
     (N'date',       N'Date',       N'A day or an instant. Groups rows by year, quarter, month, week or day.', 4),
     (N'code',       N'Code',       N'A value from a closed list, such as a status or a type. Groups and filters rows as it is; its values may be listed in column_values.', 5),
     (N'label',      N'Label',      N'A short name that identifies something, such as the name of a customer. Groups and filters rows as it is, and can be searched.', 6),

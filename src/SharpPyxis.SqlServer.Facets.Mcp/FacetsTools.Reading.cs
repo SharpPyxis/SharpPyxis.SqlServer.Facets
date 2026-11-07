@@ -113,7 +113,7 @@ internal sealed partial class FacetsTools
     [Description("Queries one view of the SQL Server database, aggregated: rows grouped by the dimensions, each "
                + "measure folded by its aggregation, after the filters. Names are those describe_view gives; "
                + "values are text, converted to the type of their column. Amounts come divided by their "
-               + "divisor, in their unit. Returns tab-separated rows with a header, capped by the server: a "
+               + "divisor, in their unit and to the cent, and a filter on them is given in that unit. Returns tab-separated rows with a header, capped by the server: a "
                + "last line says when there were more. A refused request names every fault to correct.")]
     public async Task<string> Query(
         [Description("Name of the view, as list_views gives it.")] string view,
@@ -263,7 +263,7 @@ public sealed record QueryFilter
     public required string Operator { get; init; }
 
     /// <summary>The values, as text: one for a comparison, two for between, one or more for in, none for empty.</summary>
-    [Description("The values, as text: one for a comparison, two for between, one or more for in, none for empty. A date as 2026-01-31, a boolean as true or false.")]
+    [Description("The values, as text: one for a comparison, two for between, one or more for in, none for empty. A date as 2026-01-31, a boolean as true or false, an amount in its unit as results give it.")]
     public string[]? Values { get; init; }
 }
 

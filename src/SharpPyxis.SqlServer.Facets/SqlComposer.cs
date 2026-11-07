@@ -56,7 +56,7 @@ public static class SqlComposer
 
             select.Add($"{expression} as [{alias}]");
             groupBy.Add(expression);
-            columns.Add(new ResultColumn(alias, column, Aggregation: null, Divisor: 1));
+            columns.Add(new ResultColumn(alias, column, Aggregation: null, Divisor: 1, Decimals: null));
         }
 
         foreach (var measure in request.Measures)
@@ -78,7 +78,7 @@ public static class SqlComposer
 
             // Count is a number of rows, not a value of the column: the divisor does not apply.
             var divisor = measure.Aggregation is Aggregation.Count or Aggregation.CountDistinct ? 1 : column.Divisor;
-            columns.Add(new ResultColumn(alias, column, measure.Aggregation, divisor));
+            columns.Add(new ResultColumn(alias, column, measure.Aggregation, divisor, NatureRules.Decimals(nature, measure.Aggregation)));
         }
 
         var parameters = new List<QueryParameter>();
@@ -203,7 +203,17 @@ public static class SqlComposer
         var converted = new List<string>();
         foreach (var value in filter.Values)
         {
-            if (kind.TryConvert(value, out var typed))
+            // A column with a divisor is read in its unit, so a value is given in that unit too: 120.5
+            // euros on a column of cents compares with 12050. A decimal, so that a fraction of the stored
+            // unit compares as it is instead of being cut.
+            if (column.Divisor != 1)
+            {
+                if (decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var inUnit))
+                    converted.Add(Add(parameters, SqlDbType.Decimal, inUnit * column.Divisor));
+                else
+                    faults.Add($"'{value}' is not a number for '{column.Name}'.");
+            }
+            else if (kind.TryConvert(value, out var typed))
                 converted.Add(Add(parameters, kind.DbType, typed));
             else
                 faults.Add($"'{value}' is not a valid {column.SqlType} for '{column.Name}'.");
@@ -354,9 +364,10 @@ public sealed record QueryParameter(string Name, SqlDbType Type, object Value);
 
 /// <summary>
 /// One column of the result: its alias in the SQL, the column of the catalog it comes from, the
-/// aggregation when it is a measure, and the divisor the runner applies to its values.
+/// aggregation when it is a measure, the divisor the runner applies to its values, and the decimals
+/// it rounds them to after dividing, when their nature fixes any.
 /// </summary>
-public sealed record ResultColumn(string Alias, FacetColumn Column, Aggregation? Aggregation, decimal Divisor);
+public sealed record ResultColumn(string Alias, FacetColumn Column, Aggregation? Aggregation, decimal Divisor, int? Decimals);
 
 /// <summary>A request the composer will not turn into SQL, with every fault it found.</summary>
 public sealed class QueryRefusedException(IReadOnlyList<string> faults) : Exception(string.Join(" ", faults))

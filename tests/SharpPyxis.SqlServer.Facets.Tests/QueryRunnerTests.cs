@@ -31,6 +31,54 @@ public sealed class QueryRunnerTests(DemoDatabase database)
     }
 
     [Fact]
+    public async Task Gives_an_aggregated_amount_to_the_cent()
+    {
+        var result = await RunAsync(new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("line_amount_cents", Aggregation.Avg), new("line_amount_cents", Aggregation.Count)],
+            Filters = [new("is_paid", FilterOperator.Equals, ["true"])],
+        });
+
+        // 706 500 cents over 11 paid lines: 642.2727… euros, given as 642.27; the count stays a count.
+        Assert.Equal(["642.27", "11"], result.Rows[0]);
+
+        // Half a cent rounds away from zero, as T-SQL does, where Math.Round alone would give 2.34.
+        Assert.Equal("2.35", QueryRunner.Format(2.345m, 1, 2));
+        Assert.Equal("-2.35", QueryRunner.Format(-2.345m, 1, 2));
+        Assert.Equal("120.5", QueryRunner.Format(12050, 100, 2));
+        Assert.Equal("0.333333", QueryRunner.Format(0.333333m, 1));
+    }
+
+    [Fact]
+    public async Task Filters_an_amount_in_euros_on_a_column_of_cents()
+    {
+        var all = await RunAsync(new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("line_amount_cents", Aggregation.Count), new("line_amount_cents", Aggregation.Min)],
+        });
+        var cheapest = all.Rows[0][1];
+
+        // The cheapest line, given in euros, is found again by a filter written in euros.
+        var filtered = await RunAsync(new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("line_amount_cents", Aggregation.Count)],
+            Filters = [new("line_amount_cents", FilterOperator.LessOrEqual, [cheapest])],
+        });
+        var above = await RunAsync(new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("line_amount_cents", Aggregation.Count)],
+            Filters = [new("line_amount_cents", FilterOperator.Greater, [cheapest])],
+        });
+
+        Assert.NotEqual("0", filtered.Rows[0][0]);
+        Assert.Equal(int.Parse(all.Rows[0][0]), int.Parse(filtered.Rows[0][0]) + int.Parse(above.Rows[0][0]));
+    }
+
+    [Fact]
     public async Task Groups_by_month_and_averages_a_rate()
     {
         var result = await RunAsync(new QueryRequest

@@ -13,7 +13,10 @@ public enum Nature
     /// <summary>A count, or a measured quantity. Summed and averaged; unit and divisor apply.</summary>
     Quantity,
 
-    /// <summary>A ratio or a percentage. Averaged, never summed.</summary>
+    /// <summary>
+    /// A ratio, a percentage, or a unit price: an amount per piece keeps its precision, where an
+    /// amount is given to the cent. Averaged, never summed.
+    /// </summary>
     Rate,
 
     /// <summary>A day or an instant. Groups rows by year, quarter, month, week or day.</summary>
@@ -159,6 +162,13 @@ public static class NatureRules
 
     /// <summary>Whether unit and divisor apply: the three measures.</summary>
     public static bool IsMeasure(Nature nature) => nature is Nature.Amount or Nature.Quantity or Nature.Rate;
+
+    /// <summary>
+    /// The decimals a value of this nature is rounded to once aggregated and divided, or null when it
+    /// keeps its own. An amount is money, given to the cent; a quantity or a rate is not.
+    /// </summary>
+    public static int? Decimals(Nature nature, Aggregation aggregation) =>
+        nature == Nature.Amount && aggregation is not (Aggregation.Count or Aggregation.CountDistinct) ? 2 : null;
 
     /// <summary>The code of the nature as the dictionary stores it.</summary>
     public static string Code(Nature nature) => nature.ToString().ToLowerInvariant();

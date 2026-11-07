@@ -131,7 +131,8 @@ select  l.order_id * 100 + l.line_no                            as sale_id,
         o.status,
         o.ordered_on,
         l.quantity,
-        l.unit_price_cents,
+        -- A unit price is a rate, given in euros with its precision; the line amount is money, in cents.
+        cast(l.unit_price_cents / 100.0 as decimal(18, 6))      as unit_price,
         cast(l.quantity * l.unit_price_cents as int)            as line_amount_cents,
         o.discount_rate,
         cast(iif(o.status = 'P', 1, 0) as bit)                  as is_paid,
@@ -188,7 +189,8 @@ exec facets_dict.annotate_column N'v_sales', N'category',          @by, @nature_
 exec facets_dict.annotate_column N'v_sales', N'status',            @by, @nature_code = N'code',       @label = N'Order status';
 exec facets_dict.annotate_column N'v_sales', N'ordered_on',        @by, @nature_code = N'date',       @label = N'Order date';
 exec facets_dict.annotate_column N'v_sales', N'quantity',          @by, @nature_code = N'quantity',   @label = N'Quantity', @unit = N'pcs';
-exec facets_dict.annotate_column N'v_sales', N'unit_price_cents',  @by, @nature_code = N'amount',     @label = N'Unit price', @unit = N'EUR', @divisor = 100;
+exec facets_dict.annotate_column N'v_sales', N'unit_price',        @by, @nature_code = N'rate',       @label = N'Unit price', @unit = N'EUR',
+    @description = N'Price of one piece: a rate, kept to its precision.';
 exec facets_dict.annotate_column N'v_sales', N'line_amount_cents', @by, @nature_code = N'amount',     @label = N'Line amount', @unit = N'EUR', @divisor = 100,
     @description = N'Quantity times unit price, before the discount of the order.';
 exec facets_dict.annotate_column N'v_sales', N'discount_rate',     @by, @nature_code = N'rate',       @label = N'Discount rate', @unit = N'%',

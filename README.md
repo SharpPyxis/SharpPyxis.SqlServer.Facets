@@ -91,7 +91,7 @@ Thirteen tools. Every result names the database it comes from.
 | `read_domain_note` | What the owner wrote about the data as a whole, and the general questions with their answers. |
 | `list_views` | The views the agent may query, with what each one is and the questions it answers. |
 | `describe_view` | The columns of one view: nature, label, description, unit, what the server allows on each, the values of its codes, the questions asked about it. |
-| `query` | One aggregated query: a view, dimensions, measures, filters, an order, a top. Rows come tab-separated, amounts in their unit, capped by the server. |
+| `query` | One aggregated query: a view, dimensions, measures, filters, an order, a top. Rows come tab-separated, amounts in their unit and to the cent, capped by the server. |
 | `refresh_catalog` | Aligns the dictionary on the views of `facets`: adds what is new, quarantines what is gone, deletes nothing. |
 | `annotate_view`, `annotate_column`, `annotate_value` | Write what a view, a column or a value of a code means. A parameter left out changes nothing. |
 | `write_domain_note` | Replaces the note about the data as a whole. |
