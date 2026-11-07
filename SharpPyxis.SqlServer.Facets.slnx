@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/SharpPyxis.SqlServer.Facets/SharpPyxis.SqlServer.Facets.csproj" />
+    <Project Path="src/SharpPyxis.SqlServer.Facets.Mcp/SharpPyxis.SqlServer.Facets.Mcp.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SharpPyxis.SqlServer.Facets.Tests/SharpPyxis.SqlServer.Facets.Tests.csproj" />

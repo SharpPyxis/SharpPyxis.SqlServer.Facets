@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SharpPyxis.SqlServer.Facets.Mcp</RootNamespace>
+    <!-- The short name stays free for a command line, which a person types; a client launches this one. -->
+    <AssemblyName>facets-mcp</AssemblyName>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="ModelContextProtocol" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SharpPyxis.SqlServer.Facets/SharpPyxis.SqlServer.Facets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SharpPyxis.SqlServer.Facets.Tests" />
+  </ItemGroup>
+
+</Project>
