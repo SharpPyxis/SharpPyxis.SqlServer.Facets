@@ -28,6 +28,9 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
         CreateTool(nameof(UseConnection)), CreateTool(nameof(ServerInfo)),
         CreateTool(nameof(ReadDomainNote)), CreateTool(nameof(ListViews)), CreateTool(nameof(DescribeView)),
         CreateTool(nameof(Query)),
+        CreateTool(nameof(RefreshCatalog)), CreateTool(nameof(AnnotateView)), CreateTool(nameof(AnnotateColumn)),
+        CreateTool(nameof(AnnotateValue)), CreateTool(nameof(WriteDomainNote)),
+        CreateTool(nameof(AskQuestion)), CreateTool(nameof(AnswerQuestion)),
     ];
 
     private McpServerTool CreateTool(string methodName)
