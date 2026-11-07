@@ -78,6 +78,33 @@ public sealed class QueryRunnerTests(DemoDatabase database)
         Assert.Equal(int.Parse(all.Rows[0][0]), int.Parse(filtered.Rows[0][0]) + int.Parse(above.Rows[0][0]));
     }
 
+    [Theory]
+    // Read from the calendar table of a real database, which follows ISO 8601 to the day.
+    [InlineData("2020-12-31", "2020-W53")]
+    [InlineData("2021-01-03", "2020-W53")]
+    [InlineData("2021-01-04", "2021-W01")]
+    [InlineData("2025-12-28", "2025-W52")]
+    [InlineData("2025-12-29", "2026-W01")]
+    [InlineData("2026-01-04", "2026-W01")]
+    [InlineData("2026-01-05", "2026-W02")]
+    [InlineData("2026-12-31", "2026-W53")]
+    [InlineData("2027-01-03", "2026-W53")]
+    [InlineData("2027-01-04", "2027-W01")]
+    public async Task Gives_a_week_its_ISO_year(string day, string week)
+    {
+        using var connection = database.Open();
+        var catalog = await CatalogReader.ReadAsync(connection, TestContext.Current.CancellationToken);
+        var column = catalog.FindView("v_sales")!.FindColumn("ordered_on")!;
+
+        // The demo holds no turn of the year: the expression the composer writes runs on the day alone.
+        using var command = new Microsoft.Data.SqlClient.SqlCommand(
+            $"select {SqlComposer.DimensionExpression(column, DateLevel.Week)} from (values (cast(@day as date))) as d([ordered_on]);",
+            connection);
+        command.Parameters.AddWithValue("@day", day);
+
+        Assert.Equal(week, await command.ExecuteScalarAsync(TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task Groups_by_month_and_averages_a_rate()
     {

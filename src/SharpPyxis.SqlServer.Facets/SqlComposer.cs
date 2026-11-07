@@ -139,7 +139,7 @@ public static class SqlComposer
         return column;
     }
 
-    private static string DimensionExpression(FacetColumn column, DateLevel? level)
+    internal static string DimensionExpression(FacetColumn column, DateLevel? level)
     {
         var name = $"[{column.Name}]";
         return level switch
@@ -148,9 +148,11 @@ public static class SqlComposer
             DateLevel.Year => $"datepart(year, {name})",
             DateLevel.Quarter => $"concat(datepart(year, {name}), N'-Q', datepart(quarter, {name}))",
             DateLevel.Month => $"concat(datepart(year, {name}), N'-', right(concat(N'0', datepart(month, {name})), 2))",
-            // The ISO week with the calendar year: the first days of January may read as week 52 or 53
-            // of that year, which is wrong by one year three days a year, and accepted.
-            DateLevel.Week => $"concat(datepart(year, {name}), N'-W', right(concat(N'0', datepart(iso_week, {name})), 2))",
+            // The ISO week with its own year, which is not always the calendar year: 2025-12-29 is in
+            // 2026-W01, 2027-01-01 in 2026-W53. Moved by 26 days less its week number, any day lands
+            // inside the middle of its ISO year, whatever @@DATEFIRST says.
+            DateLevel.Week => $"concat(datepart(year, dateadd(day, 26 - datepart(iso_week, {name}), {name})), N'-W', "
+                              + $"right(concat(N'0', datepart(iso_week, {name})), 2))",
             DateLevel.Day => $"cast({name} as date)",
             _ => throw new ArgumentOutOfRangeException(nameof(level), level, null),
         };
