@@ -4,7 +4,8 @@ English · [Français](README.fr.md)
 
 Local MCP server that lets an AI agent query a SQL Server database through views it aggregates, and
 never through SQL of its own: the agent names a view, dimensions, measures and filters, the server
-composes the SQL from a dictionary and runs it under a dedicated login.
+composes the SQL from a dictionary and runs it under a dedicated login. The result goes back to the
+model, or into a file on the workstation that the model does not read.
 
 ## The idea
 
@@ -42,7 +43,8 @@ Two protections, and only one of them is the guarantee.
 The first is the code of this server: no tool accepts SQL, and every query is composed from the
 dictionary, with the identifiers taken from it and the values passed as parameters. A column enters
 the dictionary export only: the agent sees its name, never its values, until the designer of the
-database opens it. A column without a nature is never queried.
+database opens it. Its values may be written to a file on the workstation, never returned to the
+model. A column without a nature is never queried.
 
 The second is the rights of the login, and that one holds even if the code had a defect or had been
 changed. The login of `Create-FacetsLogin.sql` holds `SELECT` on the schema `facets`, `SELECT` and
@@ -93,24 +95,48 @@ from facets_dict.columns as c join facets_dict.views as v on v.view_id = c.view_
 where v.view_name = N'sales' and c.column_name <> N'email';
 ```
 
-### Upgrading from 0.1.0
+You may also set how many rows a query on a view returns to the model. Without a value, the view
+takes the default of the server, 200 rows unless `FACETS_MAX_ROWS` says otherwise. A value replaces
+that default, above or below it: a view of a few hundred product families can return them all, a view
+with one row per customer can return fewer. This is your gesture too, under your own login; the
+procedures never touch it.
 
-Run `Upgrade-0.2.0.sql` once, as an administrator, then `Create-FacetsDictionaryProcedures.sql`, and
-replace the executable at the same time: each version only works with its own dictionary. An open
-column stays open; a column that was sensitive or hidden becomes export only.
+```sql
+update facets_dict.views set max_rows = 500, modified_at = sysdatetimeoffset(), modified_by = suser_sname()
+where view_name = N'product_families';
+```
+
+This cap bounds how much one answer brings into the conversation. It does not bound what the agent
+can read: an agent that splits its request, by period or by sorting both ways, gets around it, at the
+cost of more calls. What the agent reads is decided by the views, the export only columns and the
+rights of the login.
+
+### Upgrading
+
+Each version only works with its own dictionary: run its upgrade script and replace the executable
+at the same time. The scripts stop, and change nothing, on a dictionary that is not at the version
+they expect; each runs in one transaction.
+
+- From 0.2.0: run `Upgrade-0.3.0.sql` once, as an administrator. It adds `max_rows` to the views,
+  empty, so every view keeps the default of the server. The procedures stay as they are.
+- From 0.1.0: run `Upgrade-0.2.0.sql`, then `Create-FacetsDictionaryProcedures.sql`, then
+  `Upgrade-0.3.0.sql`. An open column stays open; a column that was sensitive or hidden becomes export
+  only.
 
 ## What the agent gets
 
-Thirteen tools. Every result names the database it comes from.
+Fifteen tools. Every result names the database it comes from.
 
 | Tool | What it does |
 | --- | --- |
 | `use_connection` | Lists the declared connections, or selects one. |
-| `server_info` | The executable, its version, where the connections are, the commands that manage them. |
+| `server_info` | The executable, its version, where the connections are and where the files go, the commands that manage them. |
 | `read_domain_note` | What the owner wrote about the data as a whole, and the general questions with their answers. |
 | `list_views` | The views the agent may query, with what each one is and the questions it answers. |
-| `describe_view` | The columns of one view: nature, label, description, unit, what the server allows on each, the values of its codes, the questions asked about it. |
-| `query` | One aggregated query: a view, dimensions, measures, filters, an order, a top. Rows come tab-separated, amounts in their unit and to the cent, capped by the server. |
+| `describe_view` | The columns of one view: nature, label, description, unit, what the server allows on each, the values of its codes, the most rows a query on it returns, the questions asked about it. |
+| `query` | One aggregated query: a view, dimensions, measures, filters, an order, a top. Rows come tab-separated, amounts in their unit and to the cent, capped by the view. |
+| `use_export_folder` | Chooses the folder where files are written, under the root of the connection, or lists the folders already there. |
+| `query_to_file` | The same request as `query`, written whole to a CSV file on the workstation. The model gets the path, the number of rows and a description of the file, never the rows. |
 | `refresh_catalog` | Aligns the dictionary on the views of `facets`: adds what is new, quarantines what is gone, deletes nothing. |
 | `annotate_view`, `annotate_column`, `annotate_value` | Write what a view, a column or a value of a code means. A parameter left out changes nothing. They can hide a view or make a column export only, never the reverse. |
 | `write_domain_note` | Replaces the note about the data as a whole. |
@@ -121,19 +147,80 @@ allow, comes back as a refusal that names every fault at once: the agent correct
 than retrying it. Every write records who wrote: the MCP client, as it introduced itself to the
 server.
 
-### What is not there yet
+The filters are equals, in, between, less, less or equal, greater, greater or equal, contains, empty
+and not empty, each where the nature of the column allows it. Not empty is the only negative
+operator.
 
-Exporting a panel of rows to a file on the workstation, and returning rows rather than aggregates to
-the model, come in a later version.
+## Files on the workstation
+
+`query_to_file` takes the same request as `query` and writes the whole result to a file, with no cap
+on the rows. It serves for an analysis the user wants to keep or share, for a list to import into
+another tool, or for a result that `query` cut at the cap of the view. An export only column may be
+written to the file, as a dimension or a measure. As a filter, it accepts empty and not empty only:
+the number of rows returned would otherwise tell whether a given value, such as an e-mail address, is
+in the data.
+
+### Where the files go
+
+Each connection has an export root, declared with `configure add` or `configure set-export-root`.
+Without a declared root, files go to `%USERPROFILE%\Facets\<label of the connection>`, or the name of
+the server when the connection has no label. For a connection that names a server only, each database
+has its own folder under the root.
+
+The default root is outside `Documents` on purpose. Windows offers to synchronise `Documents` with
+OneDrive, and managed workstations often do: exported data would then be sent to a cloud storage
+without anyone having chosen it. If you choose a synchronised folder yourself, the files go there too.
+
+Under the root, the agent chooses a working folder with `use_export_folder`, named after the subject
+in a few words. It keeps that folder from one export to the next, and starts without one when you
+switch to another connection; without a folder, files go to the root. The agent cannot write
+anywhere else: its names lose every character Windows refuses in a file name, and a name made of dots
+is refused. Files are never deleted by the server: tidying the folders is up to you.
+
+### What the model sees, and what it can read
+
+The model receives the path of the file, the number of rows, and a description of the file. It never
+receives the rows. The server chooses where it writes; whether the agent can open the file afterwards
+depends on the access its client gives it to the folders of the machine. Some clients only open the
+folders you entrust to them, others ask for your approval, some can be given full access. Keep the
+export root out of the folders opened to the agent, unless the agent may read what is exported.
+
+### The file
+
+Each file is named `yyyy-MM-dd_HH-mm_<label>.csv`, the label being the few words the agent gave. A
+name already taken receives `-2`, `-3`: a file is never overwritten. Beside it, a `.json` file with
+the same name describes it: the view, the columns with their label, the filters, the number of rows,
+the date, the connection and the MCP client. It is the description the model received, so you can
+tell what a file holds without opening it.
+
+The CSV is meant to open in Excel as it is, in French as in English:
+
+- columns separated by `;`, text in UTF-8 with a byte order mark, so that accents are read correctly;
+- the names of the result columns as the first line;
+- a value that holds `;`, a quote or a line break between quotes, and kept whole;
+- dates as `2026-01-31`, and `2026-01-31 14:30:00` with a time, which Excel reads as dates;
+- booleans as `1` or `0`, which Excel counts and filters as numbers;
+- decimal numbers with a point. A French Excel reads them as text; replacing the point with a comma
+  in the column turns them into numbers.
+
+A text that starts with `=`, `+`, `-` or `@` is read by Excel as a formula. The file keeps the values
+as the database holds them, so a value typed into the database in that form, such as a phone number
+written `+33…`, is computed by Excel when the file is opened.
+
+Rows are written as they are read from the database, so their number is bounded by the disk only. The
+file is written under a temporary name and appears under its own once complete. A query may run ten
+minutes. A client that asks for progress notifications receives one every 5,000 rows; whether it
+shows them depends on the client. A result without rows writes no file.
 
 ## What it costs
 
-To the AI model: a query returns tab-separated rows with a header line, at most the cap of the
-server, 200 rows unless `FACETS_MAX_ROWS` says otherwise. The agent cannot raise it. `describe_view`
-costs one line per column.
+To the AI model: a query returns tab-separated rows with a header line, at most the cap of the view,
+which `describe_view` gives; the agent cannot raise it. An export returns its description only, a few
+lines per column. `describe_view` costs one line per column.
 
 To the SQL Server instance: one query per call, on one view, grouped and filtered as the request
-says, under the login you declared. The dictionary is read again at every call, one round trip.
+says, under the login you declared. The dictionary is read again at every call, one round trip. An
+export reads the whole result, which on a large view takes as long as the same query run directly.
 
 ## Installation
 
@@ -183,12 +270,16 @@ the database, the login and the password. The MCP server never asks for them dur
 and the agent never sees them.
 
 ```text
-facets-mcp configure add                 record a new connection, testing it first
-facets-mcp configure list                show what is recorded
-facets-mcp configure test [id]           test one recorded connection, or all of them
-facets-mcp configure set-password <id>   replace the password of one connection
-facets-mcp configure remove <id>         delete one connection
+facets-mcp configure add                    record a new connection, testing it first
+facets-mcp configure list                   show what is recorded
+facets-mcp configure test [id]              test one recorded connection, or all of them
+facets-mcp configure set-password <id>      replace the password of one connection
+facets-mcp configure set-export-root <id>   choose the folder the exports of one connection go to
+facets-mcp configure remove <id>            delete one connection
 ```
+
+`configure add` also asks for the export root of the connection. An empty answer keeps the default,
+which it shows. A connection recorded before version 0.3.0 has the default.
 
 Connections are stored in a file encrypted with DPAPI, the encryption mechanism of Windows, for the
 current Windows account. This encryption protects the file if it is stolen, or if it is exposed by
@@ -235,8 +326,8 @@ Four environment variables set up the MCP server:
 | Variable | Role |
 | --- | --- |
 | `FACETS_CONFIG_PATH` | Where the file of connections is. Optional. |
-| `FACETS_MAX_ROWS` | The maximum number of rows in an answer, 200 by default. The agent cannot change it. |
-| `CONNECTION_STRING` | A single connection, declared without the file. It serves where DPAPI does not exist, outside Windows. The password is then in plain text in the configuration of the client. |
+| `FACETS_MAX_ROWS` | The maximum number of rows in an answer, 200 by default, for a view that sets no cap of its own. The agent cannot change it. |
+| `CONNECTION_STRING` | A single connection, declared without the file. It serves where DPAPI does not exist, outside Windows. The password is then in plain text in the configuration of the client, and its files go to the default root. |
 | `FACETS_DESCRIPTION` | A label for that single connection, in plain words. Optional. |
 
 ## Tests

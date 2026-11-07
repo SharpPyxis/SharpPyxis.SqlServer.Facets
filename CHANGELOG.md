@@ -4,6 +4,39 @@ All notable changes to this project are documented in this file. The format foll
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The result of a query can go into a file on the workstation, whole, and each view sets how many rows a
+query on it returns to the model.
+
+### Added
+
+- `query_to_file` runs the same request as `query` and writes the whole result to a CSV file on the
+  workstation, with no cap on the rows, and a `.json` description beside it. The model receives the
+  path, the number of rows and the description, never the rows. Export only columns are accepted as
+  dimensions and measures; as a filter, they accept empty and not empty only. The CSV opens in Excel as
+  it is: separated by `;`, UTF-8 with a byte order mark, dates in ISO, booleans as 1 or 0, decimals
+  with a point. A client that asks for progress notifications receives one every 5,000 rows.
+- `use_export_folder` chooses the working folder of the files under the export root of the connection,
+  or lists the folders already there.
+- Each connection has an export root, asked by `configure add` and changed by the new
+  `configure set-export-root`. The default is `%USERPROFILE%\Facets\<label or server>`, outside
+  `Documents`, which Windows often synchronises with OneDrive.
+- `max_rows` on a view of the dictionary: how many rows a query on it returns to the model, above or
+  below the default of the server. The designer sets it under their own login. `describe_view` shows
+  it, and a result cut at the cap says that the owner of the dictionary sets it.
+- The filter operator `not empty`, wherever `empty` is allowed.
+
+### Changed
+
+- `FACETS_MAX_ROWS` is the default cap of a view that sets none.
+- A result cut by the `top` of the request says that the view returns more, up to its cap.
+
+### Upgrading from 0.2.0
+
+Run `Upgrade-0.3.0.sql` once, as an administrator, and replace the executable at the same time. Every
+view keeps the default cap until the designer sets one. The procedures of 0.2.0 stay as they are.
+
 ## [0.2.0] - 2026-11-07
 
 A column enters the dictionary closed, and only the designer of the database opens it.

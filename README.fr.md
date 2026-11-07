@@ -4,7 +4,8 @@
 
 Serveur MCP local qui permet à un agent IA d'interroger une base SQL Server à travers des vues qu'il
 agrège, jamais par du SQL à lui : l'agent nomme une vue, des dimensions, des mesures et des filtres,
-le serveur compose le SQL depuis un dictionnaire et l'exécute sous un login dédié.
+le serveur compose le SQL depuis un dictionnaire et l'exécute sous un login dédié. Le résultat revient
+au modèle, ou va dans un fichier du poste que le modèle ne lit pas.
 
 ## L'idée
 
@@ -42,7 +43,8 @@ Deux protections, et une seule fait la garantie.
 La première est le code de ce serveur : aucun outil n'accepte de SQL, et chaque requête est composée
 depuis le dictionnaire, les identifiants pris dedans et les valeurs passées en paramètres. Une colonne
 entre au dictionnaire en export seulement : l'agent voit son nom, jamais ses valeurs, tant que le
-concepteur de la base ne l'a pas ouverte. Une colonne sans nature n'est jamais interrogée.
+concepteur de la base ne l'a pas ouverte. Ses valeurs peuvent être écrites dans un fichier du poste,
+jamais rendues au modèle. Une colonne sans nature n'est jamais interrogée.
 
 La seconde est faite des droits du login, et celle-là tient même si le code avait un défaut ou avait
 été modifié. Le login de `Create-FacetsLogin.sql` détient `SELECT` sur le schéma `facets`, `SELECT` et
@@ -94,24 +96,48 @@ from facets_dict.columns as c join facets_dict.views as v on v.view_id = c.view_
 where v.view_name = N'sales' and c.column_name <> N'email';
 ```
 
-### Mettre à jour depuis la 0.1.0
+Vous pouvez aussi fixer combien de lignes une requête sur une vue rend au modèle. Sans valeur, la vue
+prend le défaut du serveur, 200 lignes sauf si `FACETS_MAX_ROWS` en décide autrement. Une valeur
+remplace ce défaut, au-dessus comme au-dessous : une vue de quelques centaines de familles de produits
+peut toutes les rendre, une vue d'une ligne par client peut en rendre moins. C'est aussi votre geste,
+sous votre propre login ; les procédures n'y touchent jamais.
 
-Passez `Upgrade-0.2.0.sql` une fois, en administrateur, puis `Create-FacetsDictionaryProcedures.sql`,
-et remplacez l'exécutable en même temps : chaque version ne fonctionne qu'avec son dictionnaire. Une
-colonne ouverte le reste ; une colonne sensible ou cachée passe en export seulement.
+```sql
+update facets_dict.views set max_rows = 500, modified_at = sysdatetimeoffset(), modified_by = suser_sname()
+where view_name = N'product_families';
+```
+
+Cette borne limite ce qu'une réponse apporte dans la conversation. Elle ne limite pas ce que l'agent
+peut lire : un agent qui découpe sa demande, par période ou en triant dans les deux sens, la
+contourne, au prix de plus d'appels. Ce que l'agent lit est décidé par les vues, les colonnes en
+export seulement et les droits du login.
+
+### Mettre à jour
+
+Chaque version ne fonctionne qu'avec son dictionnaire : passez son script de mise à jour et remplacez
+l'exécutable en même temps. Les scripts s'arrêtent, sans rien changer, sur un dictionnaire qui n'est
+pas à la version qu'ils attendent ; chacun tourne dans une seule transaction.
+
+- Depuis la 0.2.0 : passez `Upgrade-0.3.0.sql` une fois, en administrateur. Il ajoute `max_rows` aux
+  vues, vide, donc chaque vue garde le défaut du serveur. Les procédures restent telles quelles.
+- Depuis la 0.1.0 : passez `Upgrade-0.2.0.sql`, puis `Create-FacetsDictionaryProcedures.sql`, puis
+  `Upgrade-0.3.0.sql`. Une colonne ouverte le reste ; une colonne sensible ou cachée passe en export
+  seulement.
 
 ## Ce que l'agent obtient
 
-Treize outils. Chaque résultat nomme la base dont il vient.
+Quinze outils. Chaque résultat nomme la base dont il vient.
 
 | Outil | Ce qu'il fait |
 | --- | --- |
 | `use_connection` | Liste les connexions déclarées, ou en sélectionne une. |
-| `server_info` | L'exécutable, sa version, où sont les connexions, les commandes qui les gèrent. |
+| `server_info` | L'exécutable, sa version, où sont les connexions et où vont les fichiers, les commandes qui les gèrent. |
 | `read_domain_note` | Ce que le propriétaire a écrit sur les données dans leur ensemble, et les questions générales avec leurs réponses. |
 | `list_views` | Les vues que l'agent peut interroger, avec ce que chacune est et les questions auxquelles elle répond. |
-| `describe_view` | Les colonnes d'une vue : nature, libellé, description, unité, ce que le serveur permet sur chacune, les valeurs de ses codes, les questions posées dessus. |
-| `query` | Une requête agrégée : une vue, des dimensions, des mesures, des filtres, un tri, un top. Les lignes viennent séparées par des tabulations, les montants dans leur unité et au centime, plafonnées par le serveur. |
+| `describe_view` | Les colonnes d'une vue : nature, libellé, description, unité, ce que le serveur permet sur chacune, les valeurs de ses codes, le nombre maximal de lignes d'une requête sur elle, les questions posées dessus. |
+| `query` | Une requête agrégée : une vue, des dimensions, des mesures, des filtres, un tri, un top. Les lignes viennent séparées par des tabulations, les montants dans leur unité et au centime, bornées par la vue. |
+| `use_export_folder` | Choisit le dossier où les fichiers s'écrivent, sous la racine de la connexion, ou liste les dossiers déjà présents. |
+| `query_to_file` | La même demande que `query`, écrite en entier dans un fichier CSV du poste. Le modèle reçoit le chemin, le nombre de lignes et une description du fichier, jamais les lignes. |
 | `refresh_catalog` | Aligne le dictionnaire sur les vues de `facets` : ajoute ce qui est nouveau, met en quarantaine ce qui a disparu, ne supprime rien. |
 | `annotate_view`, `annotate_column`, `annotate_value` | Écrivent ce qu'une vue, une colonne ou une valeur d'un code signifie. Un paramètre omis ne change rien. Elles peuvent cacher une vue ou passer une colonne en export seulement, jamais l'inverse. |
 | `write_domain_note` | Remplace la note sur les données dans leur ensemble. |
@@ -122,19 +148,85 @@ n'autorise pas, revient comme un refus qui nomme toutes les fautes d'un coup : l
 requête au lieu de la réessayer. Chaque écriture enregistre qui a écrit : le client MCP, tel qu'il
 s'est présenté au serveur.
 
-### Ce qui n'y est pas encore
+Les filtres sont égal, dans, entre, inférieur, inférieur ou égal, supérieur, supérieur ou égal,
+contient, vide et non vide, chacun là où la nature de la colonne l'autorise ; ils s'écrivent en
+anglais dans la requête (`equals`, `not empty`…). Non vide est le seul opérateur négatif.
 
-L'export d'un panel de lignes vers un fichier du poste, et le retour de lignes plutôt que d'agrégats
-au modèle, viendront dans une version ultérieure.
+## Des fichiers sur le poste
+
+`query_to_file` prend la même demande que `query` et écrit le résultat entier dans un fichier, sans
+borne de lignes. Il sert pour une analyse que l'utilisateur veut garder ou partager, pour une liste à
+importer dans un autre outil, ou pour un résultat que `query` a coupé à la borne de la vue. Une
+colonne en export seulement peut être écrite dans le fichier, en dimension ou en mesure. En filtre,
+elle n'accepte que vide et non vide : sinon, le nombre de lignes rendu dirait si une valeur donnée,
+comme une adresse e-mail, figure dans les données.
+
+### Où vont les fichiers
+
+Chaque connexion a une racine d'export, déclarée par `configure add` ou `configure set-export-root`.
+Sans racine déclarée, les fichiers vont dans `%USERPROFILE%\Facets\<libellé de la connexion>`, ou le
+nom du serveur quand la connexion n'a pas de libellé. Pour une connexion qui ne nomme qu'un serveur,
+chaque base a son dossier sous la racine.
+
+La racine par défaut est hors de `Documents`, à dessein. Windows propose de synchroniser `Documents`
+avec OneDrive, et les postes gérés par une entreprise le font souvent : les données exportées
+partiraient alors vers un stockage en ligne sans que personne l'ait choisi. Si vous choisissez
+vous-même un dossier synchronisé, les fichiers y vont aussi.
+
+Sous la racine, l'agent choisit un dossier de travail avec `use_export_folder`, nommé d'après le sujet
+en quelques mots. Il garde ce dossier d'un export à l'autre, et repart sans dossier quand vous changez
+de connexion ; sans dossier, les fichiers vont à la racine. L'agent ne peut écrire nulle part
+ailleurs : ses noms perdent tout caractère que Windows refuse dans un nom de fichier, et un nom fait de
+points est refusé. Le serveur ne supprime jamais un fichier : le rangement des dossiers vous revient.
+
+### Ce que le modèle voit, et ce qu'il peut lire
+
+Le modèle reçoit le chemin du fichier, le nombre de lignes et une description du fichier. Il ne reçoit
+jamais les lignes. Le serveur choisit où il écrit ; que l'agent puisse ouvrir le fichier ensuite
+dépend de l'accès que son client lui donne aux dossiers de la machine. Certains clients n'ouvrent que
+les dossiers que vous leur confiez, d'autres demandent votre accord, certains peuvent recevoir un
+accès complet. Gardez la racine d'export hors des dossiers ouverts à l'agent, sauf si l'agent peut lire
+ce qui est exporté.
+
+### Le fichier
+
+Chaque fichier s'appelle `aaaa-MM-jj_HH-mm_<libellé>.csv`, le libellé étant les quelques mots donnés
+par l'agent. Un nom déjà pris reçoit `-2`, `-3` : un fichier n'est jamais écrasé. À côté, un fichier
+`.json` de même nom le décrit : la vue, les colonnes avec leur libellé, les filtres, le nombre de
+lignes, la date, la connexion et le client MCP. C'est la description que le modèle a reçue : vous
+savez ce que contient un fichier sans l'ouvrir.
+
+Le CSV est fait pour s'ouvrir dans Excel tel quel, en français comme en anglais :
+
+- des colonnes séparées par `;`, du texte en UTF-8 avec marque d'ordre des octets (BOM), pour que les
+  accents soient bien lus ;
+- les noms des colonnes du résultat en première ligne ;
+- une valeur qui contient `;`, un guillemet ou un saut de ligne entre guillemets, et gardée entière ;
+- des dates en `2026-01-31`, et `2026-01-31 14:30:00` avec une heure, qu'Excel lit comme des dates ;
+- des booléens en `1` ou `0`, qu'Excel compte et filtre comme des nombres ;
+- des nombres décimaux avec un point. Un Excel en français les lit comme du texte ; remplacer le point
+  par une virgule dans la colonne en fait des nombres.
+
+Un texte qui commence par `=`, `+`, `-` ou `@` est lu par Excel comme une formule. Le fichier garde les
+valeurs telles que la base les contient : une valeur saisie sous cette forme, comme un numéro de
+téléphone écrit `+33…`, est calculée par Excel à l'ouverture du fichier.
+
+Les lignes s'écrivent à mesure qu'elles sont lues dans la base : leur nombre n'est borné que par le
+disque. Le fichier s'écrit sous un nom provisoire et n'apparaît sous le sien qu'une fois complet. Une
+requête peut durer dix minutes. Un client qui demande les notifications de progression en reçoit une
+toutes les 5 000 lignes ; qu'il les affiche dépend du client. Un résultat sans ligne n'écrit aucun
+fichier.
 
 ## Ce que ça coûte
 
 Au modèle d'IA : une requête rend des lignes séparées par des tabulations avec une ligne d'en-tête,
-au plus le plafond du serveur, 200 lignes sauf si `FACETS_MAX_ROWS` en décide autrement. L'agent ne
-peut pas le relever. `describe_view` coûte une ligne par colonne.
+au plus la borne de la vue, que `describe_view` donne ; l'agent ne peut pas la relever. Un export ne
+rend que sa description, quelques lignes par colonne. `describe_view` coûte une ligne par colonne.
 
 À l'instance SQL Server : une requête par appel, sur une vue, groupée et filtrée comme la demande le
-dit, sous le login que vous avez déclaré. Le dictionnaire est relu à chaque appel, un aller-retour.
+dit, sous le login que vous avez déclaré. Le dictionnaire est relu à chaque appel, un aller-retour. Un
+export lit le résultat entier, ce qui prend sur une grande vue le temps de la même requête lancée
+directement.
 
 ## Installation
 
@@ -185,12 +277,16 @@ l'instance, la base, le login et le mot de passe. Le serveur MCP ne les demande 
 conversation, et l'agent ne les voit jamais.
 
 ```text
-facets-mcp configure add                 record a new connection, testing it first
-facets-mcp configure list                show what is recorded
-facets-mcp configure test [id]           test one recorded connection, or all of them
-facets-mcp configure set-password <id>   replace the password of one connection
-facets-mcp configure remove <id>         delete one connection
+facets-mcp configure add                    record a new connection, testing it first
+facets-mcp configure list                   show what is recorded
+facets-mcp configure test [id]              test one recorded connection, or all of them
+facets-mcp configure set-password <id>      replace the password of one connection
+facets-mcp configure set-export-root <id>   choose the folder the exports of one connection go to
+facets-mcp configure remove <id>            delete one connection
 ```
+
+`configure add` demande aussi la racine d'export de la connexion. Une réponse vide garde le défaut,
+qu'il affiche. Une connexion enregistrée avant la version 0.3.0 a le défaut.
 
 Les connexions sont rangées dans un fichier chiffré par DPAPI, le mécanisme de chiffrement de
 Windows, pour le compte Windows courant. Ce chiffrement protège le fichier s'il est volé, ou exposé
@@ -238,8 +334,8 @@ Quatre variables d'environnement règlent le serveur MCP :
 | Variable | Rôle |
 | --- | --- |
 | `FACETS_CONFIG_PATH` | Où est le fichier de connexions. Facultative. |
-| `FACETS_MAX_ROWS` | Le nombre maximal de lignes d'une réponse, 200 par défaut. L'agent ne peut pas le changer. |
-| `CONNECTION_STRING` | Une connexion unique, déclarée sans le fichier. Elle sert là où DPAPI n'existe pas, hors de Windows. Le mot de passe est alors en clair dans la configuration du client. |
+| `FACETS_MAX_ROWS` | Le nombre maximal de lignes d'une réponse, 200 par défaut, pour une vue qui ne fixe pas sa propre borne. L'agent ne peut pas le changer. |
+| `CONNECTION_STRING` | Une connexion unique, déclarée sans le fichier. Elle sert là où DPAPI n'existe pas, hors de Windows. Le mot de passe est alors en clair dans la configuration du client, et ses fichiers vont à la racine par défaut. |
 | `FACETS_DESCRIPTION` | Un libellé pour cette connexion unique, en mots. Facultative. |
 
 ## Tests
