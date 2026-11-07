@@ -14,8 +14,11 @@ namespace SharpPyxis.SqlServer.Facets.Tests;
 /// </remarks>
 public sealed partial class DemoDatabase : IDisposable
 {
-    private const string Server = @"(localdb)\MSSQLLocalDB";
-    private const string Name = "FacetsTests";
+    /// <summary>The server the demo database is created on.</summary>
+    public const string Server = @"(localdb)\MSSQLLocalDB";
+
+    /// <summary>The name of the demo database.</summary>
+    public const string Name = "FacetsTests";
 
     public DemoDatabase()
     {

@@ -101,7 +101,7 @@ internal sealed partial class FacetsTools
         [Description("The column the question is about, if any; its view is then required.")] string? column = null,
         CancellationToken cancellationToken = default)
     {
-        if (_active is not { } active)
+        if (await ActiveAsync(cancellationToken) is not { } active)
             return NoConnection;
 
         try
@@ -143,7 +143,7 @@ internal sealed partial class FacetsTools
                + "dropped. Returns the counts.")]
     public async Task<string> RefreshCatalog(McpServer server, CancellationToken cancellationToken = default)
     {
-        if (_active is not { } active)
+        if (await ActiveAsync(cancellationToken) is not { } active)
             return NoConnection;
 
         try
@@ -167,7 +167,7 @@ internal sealed partial class FacetsTools
 
     private async Task<string> RunProcedureAsync(string procedure, Dictionary<string, object?> parameters, string done, CancellationToken cancellationToken)
     {
-        if (_active is not { } active)
+        if (await ActiveAsync(cancellationToken) is not { } active)
             return NoConnection;
 
         try

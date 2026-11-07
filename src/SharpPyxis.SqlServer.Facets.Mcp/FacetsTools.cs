@@ -11,12 +11,47 @@ namespace SharpPyxis.SqlServer.Facets.Mcp;
 /// The tools of the server, bound to one database at a time. Every result names the target it came
 /// from; no tool accepts SQL.
 /// </summary>
-internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionStore store)
+internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionStore store, TimeSpan? selectionWait = null)
 {
+    /// <summary>How long a call finding no connection waits for one to be chosen before refusing.</summary>
+    public static readonly TimeSpan DefaultSelectionWait = TimeSpan.FromSeconds(5);
+
     // The connection every tool works against. Null until one is chosen, which is what makes the
     // model ask instead of picking. A reference assignment is atomic, which is all the concurrency
     // this needs.
     private ActiveConnection? _active = OpenByDefault(settings, store);
+
+    // Completed by the first choice. The SDK runs each request on a task of its own, so a call sent in
+    // the same batch as use_connection reaches the tools before the choice is made: it waits for it
+    // rather than answer that none is selected.
+    private readonly TaskCompletionSource _firstSelection = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private readonly TimeSpan _selectionWait = selectionWait ?? DefaultSelectionWait;
+
+    /// <summary>The chosen connection, waiting a little for one being chosen; null when none comes.</summary>
+    private async Task<ActiveConnection?> ActiveAsync(CancellationToken cancellationToken)
+    {
+        if (_active is { } active)
+            return active;
+
+        try
+        {
+            await _firstSelection.Task.WaitAsync(_selectionWait, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            // Nothing was chosen: the caller says so.
+        }
+
+        return _active;
+    }
+
+    private ActiveConnection Select(ConnectionEntry entry, string database)
+    {
+        var chosen = _active = new ActiveConnection(entry, database);
+        _firstSelection.TrySetResult();
+        return chosen;
+    }
 
     /// <summary>
     /// Builds the tools with the connections appended to each description. A client that runs several
@@ -102,8 +137,7 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
                 return $"Connection {chosen.Id} works on the database {declared}, and only on it. To work on {database}, "
                      + "the user declares a connection for it: facets-mcp configure add.";
 
-            _active = new ActiveConnection(chosen, declared);
-            return _active.Stamp("Selected.");
+            return Select(chosen, declared).Stamp("Selected.");
         }
 
         if (database is not { Length: > 0 })
@@ -114,8 +148,7 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
         if (FindOpenableDatabase(chosen, database) is not { } catalog)
             return $"No database named {database} can be opened by this login. Choose among:\n" + ListDatabases(chosen);
 
-        _active = new ActiveConnection(chosen, catalog);
-        return _active.Stamp("Selected.");
+        return Select(chosen, catalog).Stamp("Selected.");
     }
 
     // By default every login may read the names of all databases (VIEW ANY DATABASE is granted to

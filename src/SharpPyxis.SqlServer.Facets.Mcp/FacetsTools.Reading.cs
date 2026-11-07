@@ -28,7 +28,7 @@ internal sealed partial class FacetsTools
                + "for the columns of one.")]
     public async Task<string> ListViews(CancellationToken cancellationToken)
     {
-        if (_active is not { } active)
+        if (await ActiveAsync(cancellationToken) is not { } active)
             return NoConnection;
 
         var catalog = await ReadCatalogAsync(active, cancellationToken);
@@ -53,7 +53,7 @@ internal sealed partial class FacetsTools
         [Description("Name of the view, as list_views gives it.")] string view,
         CancellationToken cancellationToken)
     {
-        if (_active is not { } active)
+        if (await ActiveAsync(cancellationToken) is not { } active)
             return NoConnection;
 
         var catalog = await ReadCatalogAsync(active, cancellationToken);
@@ -97,7 +97,7 @@ internal sealed partial class FacetsTools
                + "general, with their answers. Call it at the start of a session, before any query.")]
     public async Task<string> ReadDomainNote(CancellationToken cancellationToken)
     {
-        if (_active is not { } active)
+        if (await ActiveAsync(cancellationToken) is not { } active)
             return NoConnection;
 
         var catalog = await ReadCatalogAsync(active, cancellationToken);
@@ -129,7 +129,7 @@ internal sealed partial class FacetsTools
         int? top = null,
         CancellationToken cancellationToken = default)
     {
-        if (_active is not { } active)
+        if (await ActiveAsync(cancellationToken) is not { } active)
             return NoConnection;
 
         var faults = new List<string>();
