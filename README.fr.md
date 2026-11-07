@@ -41,14 +41,19 @@ Deux protections, et une seule fait la garantie.
 
 La première est le code de ce serveur : aucun outil n'accepte de SQL, et chaque requête est composée
 depuis le dictionnaire, les identifiants pris dedans et les valeurs passées en paramètres. Une colonne
-que le dictionnaire cache, ou marque sensible, n'est jamais lue ; une colonne sans nature n'est
-jamais interrogée.
+entre au dictionnaire en export seulement : l'agent voit son nom, jamais ses valeurs, tant que le
+concepteur de la base ne l'a pas ouverte. Une colonne sans nature n'est jamais interrogée.
 
 La seconde est faite des droits du login, et celle-là tient même si le code avait un défaut ou avait
 été modifié. Le login de `Create-FacetsLogin.sql` détient `SELECT` sur le schéma `facets`, `SELECT` et
 `EXECUTE` sur le schéma `facets_dict`, et rien d'autre. Il lit les tables derrière les vues par la
 chaîne de propriétaires, sans droit dessus ; il écrit le dictionnaire par ses procédures, sans droit
 sur ses tables. `Verify-FacetsRights.sql`, passé sous ce login, le prouve en six contrôles.
+
+Les procédures ferment et n'ouvrent jamais : par elles, l'agent peut cacher une vue ou passer une
+colonne en export seulement, jamais l'inverse. Ouvrir une colonne aux requêtes, ou montrer de nouveau
+une vue cachée, est une mise à jour du dictionnaire sous le login du concepteur, que le login du
+serveur n'a pas le droit de faire.
 
 Un login administrateur, `sysadmin` ou `db_owner`, lit tout : le serveur le dit quand un tel login est
 déclaré, et encore dans le premier résultat après sa sélection.
@@ -67,7 +72,8 @@ commenté en détail et dit ce qu'il attend avant de tourner.
    version du produit.
 3. `Create-DemoDatabase.sql`, facultatif, pour essayer le serveur sans une base qui compte : une
    petite boutique avec des lignes, trois vues qui couvrent les neuf natures, et le dictionnaire
-   annoté par les procédures, comme un agent le ferait.
+   annoté par les procédures, comme un agent le ferait. Ses colonnes sont ouvertes comme un
+   concepteur le ferait, toutes sauf un e-mail.
 4. `Create-FacetsLogin.sql` crée le login, en mode SQLCMD, et accorde à son rôle les trois droits
    ci-dessus.
 5. `Verify-FacetsRights.sql` tourne **sous ce login** et rend six verdicts : il voit les vues de
@@ -77,6 +83,22 @@ commenté en détail et dit ce qu'il attend avant de tourner.
 Écrivez ensuite vos vues dans le schéma `facets`, une par question que l'agent doit savoir traiter,
 avec ou sans SchemaMcp ; passez `refresh_catalog` ; et annotez-les, en SQL ou en disant à l'agent ce
 que chacune est.
+
+Enfin, ouvrez les colonnes que l'agent peut interroger. Chaque colonne entre au dictionnaire en export
+seulement, et une colonne que l'agent ne doit pas voir du tout n'a pas sa place dans la vue. Ouvrir
+est votre geste, sous votre propre login :
+
+```sql
+update c set is_export_only = 0, modified_at = sysdatetimeoffset(), modified_by = suser_sname()
+from facets_dict.columns as c join facets_dict.views as v on v.view_id = c.view_id
+where v.view_name = N'sales' and c.column_name <> N'email';
+```
+
+### Mettre à jour depuis la 0.1.0
+
+Passez `Upgrade-0.2.0.sql` une fois, en administrateur, puis `Create-FacetsDictionaryProcedures.sql`,
+et remplacez l'exécutable en même temps : chaque version ne fonctionne qu'avec son dictionnaire. Une
+colonne ouverte le reste ; une colonne sensible ou cachée passe en export seulement.
 
 ## Ce que l'agent obtient
 
@@ -91,7 +113,7 @@ Treize outils. Chaque résultat nomme la base dont il vient.
 | `describe_view` | Les colonnes d'une vue : nature, libellé, description, unité, ce que le serveur permet sur chacune, les valeurs de ses codes, les questions posées dessus. |
 | `query` | Une requête agrégée : une vue, des dimensions, des mesures, des filtres, un tri, un top. Les lignes viennent séparées par des tabulations, les montants dans leur unité et au centime, plafonnées par le serveur. |
 | `refresh_catalog` | Aligne le dictionnaire sur les vues de `facets` : ajoute ce qui est nouveau, met en quarantaine ce qui a disparu, ne supprime rien. |
-| `annotate_view`, `annotate_column`, `annotate_value` | Écrivent ce qu'une vue, une colonne ou une valeur d'un code signifie. Un paramètre omis ne change rien. |
+| `annotate_view`, `annotate_column`, `annotate_value` | Écrivent ce qu'une vue, une colonne ou une valeur d'un code signifie. Un paramètre omis ne change rien. Elles peuvent cacher une vue ou passer une colonne en export seulement, jamais l'inverse. |
 | `write_domain_note` | Remplace la note sur les données dans leur ensemble. |
 | `ask_question`, `answer_question` | Enregistrent ce que le dictionnaire ne disait pas, et la réponse quand le propriétaire la donne. |
 

@@ -40,14 +40,19 @@ you declared. Nothing is installed on the instance but the two schemas and the l
 Two protections, and only one of them is the guarantee.
 
 The first is the code of this server: no tool accepts SQL, and every query is composed from the
-dictionary, with the identifiers taken from it and the values passed as parameters. A column the
-dictionary hides, or marks sensitive, is never read; a column without a nature is never queried.
+dictionary, with the identifiers taken from it and the values passed as parameters. A column enters
+the dictionary export only: the agent sees its name, never its values, until the designer of the
+database opens it. A column without a nature is never queried.
 
 The second is the rights of the login, and that one holds even if the code had a defect or had been
 changed. The login of `Create-FacetsLogin.sql` holds `SELECT` on the schema `facets`, `SELECT` and
 `EXECUTE` on the schema `facets_dict`, and nothing else. It reads the tables behind the views through
 ownership chaining, with no right on them; it writes the dictionary through its procedures, with no
 right on its tables. `Verify-FacetsRights.sql`, run as that login, proves it in six checks.
+
+The procedures close and never open: through them the agent may hide a view or make a column export
+only, never the reverse. Opening a column to queries, or showing a hidden view again, is an update of
+the dictionary under the login of the designer, which the login of the server has no right to make.
 
 An administrator login, `sysadmin` or `db_owner`, reads everything: the server says so when such a
 login is declared, and again in the first result after it is selected.
@@ -66,7 +71,8 @@ in detail, and says what it needs before it runs.
    product.
 3. `Create-DemoDatabase.sql`, optional, for trying the server without a database that matters: a small
    shop with rows, three views that cover the nine natures, and the dictionary annotated through the
-   procedures, the way an agent would do it.
+   procedures, the way an agent would do it. Its columns are opened the way a designer would, all
+   but an e-mail.
 4. `Create-FacetsLogin.sql` creates the login, in SQLCMD mode, and grants its role the three rights
    above.
 5. `Verify-FacetsRights.sql` runs **as that login** and gives six verdicts: it sees the views of
@@ -76,6 +82,22 @@ in detail, and says what it needs before it runs.
 Then write your views in the schema `facets`, one per question the agent should answer, with or
 without SchemaMcp; run `refresh_catalog`; and annotate them, in SQL or by telling the agent what
 each one is.
+
+Last, open the columns the agent may query. Every column enters the dictionary export only, and a
+column the agent must not see at all has no place in the view. Opening is your gesture, under your
+own login:
+
+```sql
+update c set is_export_only = 0, modified_at = sysdatetimeoffset(), modified_by = suser_sname()
+from facets_dict.columns as c join facets_dict.views as v on v.view_id = c.view_id
+where v.view_name = N'sales' and c.column_name <> N'email';
+```
+
+### Upgrading from 0.1.0
+
+Run `Upgrade-0.2.0.sql` once, as an administrator, then `Create-FacetsDictionaryProcedures.sql`, and
+replace the executable at the same time: each version only works with its own dictionary. An open
+column stays open; a column that was sensitive or hidden becomes export only.
 
 ## What the agent gets
 
@@ -90,7 +112,7 @@ Thirteen tools. Every result names the database it comes from.
 | `describe_view` | The columns of one view: nature, label, description, unit, what the server allows on each, the values of its codes, the questions asked about it. |
 | `query` | One aggregated query: a view, dimensions, measures, filters, an order, a top. Rows come tab-separated, amounts in their unit and to the cent, capped by the server. |
 | `refresh_catalog` | Aligns the dictionary on the views of `facets`: adds what is new, quarantines what is gone, deletes nothing. |
-| `annotate_view`, `annotate_column`, `annotate_value` | Write what a view, a column or a value of a code means. A parameter left out changes nothing. |
+| `annotate_view`, `annotate_column`, `annotate_value` | Write what a view, a column or a value of a code means. A parameter left out changes nothing. They can hide a view or make a column export only, never the reverse. |
 | `write_domain_note` | Replaces the note about the data as a whole. |
 | `ask_question`, `answer_question` | Record what the dictionary did not say, and the answer when the owner gives it. |
 

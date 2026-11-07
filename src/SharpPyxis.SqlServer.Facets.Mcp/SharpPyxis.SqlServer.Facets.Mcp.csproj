@@ -6,7 +6,7 @@
     <RootNamespace>SharpPyxis.SqlServer.Facets.Mcp</RootNamespace>
     <!-- The short name stays free for a command line, which a person types; a client launches this one. -->
     <AssemblyName>facets-mcp</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
