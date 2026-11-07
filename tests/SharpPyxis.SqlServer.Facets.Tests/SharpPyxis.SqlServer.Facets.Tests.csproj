@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- xunit v3 runs through Microsoft.Testing.Platform, which makes the test project an executable;
+         global.json at the root tells dotnet test so. -->
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SharpPyxis.SqlServer.Facets.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/SharpPyxis.SqlServer.Facets/SharpPyxis.SqlServer.Facets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tests run against the database the three scripts of db/ build, in this order. -->
+    <None Include="../../db/Create-FacetsDictionary.sql" Link="Create-FacetsDictionary.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../db/Create-FacetsDictionaryProcedures.sql" Link="Create-FacetsDictionaryProcedures.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../db/Create-DemoDatabase.sql" Link="Create-DemoDatabase.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

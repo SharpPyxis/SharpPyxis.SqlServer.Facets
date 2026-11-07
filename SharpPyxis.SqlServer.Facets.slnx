@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SharpPyxis.SqlServer.Facets/SharpPyxis.SqlServer.Facets.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SharpPyxis.SqlServer.Facets.Tests/SharpPyxis.SqlServer.Facets.Tests.csproj" />
+  </Folder>
+</Solution>

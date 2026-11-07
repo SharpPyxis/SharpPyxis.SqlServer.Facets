@@ -13,6 +13,12 @@
 # The costs are not symmetric: a file wrongly ignored is invisible, a file wrongly tracked is
 # obvious immediately.
 
+# ── .NET build output ──────────────────────────────────────────────────────────
+# Produced under every project folder by each build. Unanchored on purpose: the rule cannot be
+# wrong here, since nothing in a .NET repository is versioned under a folder with these names.
+bin/
+obj/
+
 # ── Editor tooling ─────────────────────────────────────────────────────────────
 # Machine-local settings. The editor workspace file lives at the corpus root and belongs to no
 # repository.
