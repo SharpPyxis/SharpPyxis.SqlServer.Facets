@@ -23,13 +23,14 @@ public sealed record FacetView(string Name, string Label, string Answers, IReadO
 }
 
 /// <summary>
-/// One column of a view, exposed to the model and present in the view. <see cref="Nature"/> is null
-/// while nobody has decided it: the column is shown, so that the agent can say what it lacks, and the
-/// composer refuses it.
+/// One column of a view, present in the view. <see cref="Nature"/> is null while nobody has decided it:
+/// the column is shown, so that the agent can say what it lacks, and the composer refuses it. An
+/// <see cref="IsExportOnly"/> column is shown by its name, its values never: the composer refuses it,
+/// and its <see cref="Values"/> are not read.
 /// </summary>
 public sealed record FacetColumn(
     string Name, string Label, string Description, Nature? Nature, string SqlType, string Unit, decimal Divisor,
-    IReadOnlyList<CodeValue> Values);
+    bool IsExportOnly, IReadOnlyList<CodeValue> Values);
 
 /// <summary>One value a code column takes, and what it means.</summary>
 public sealed record CodeValue(string Value, string Label, string Description);
@@ -40,24 +41,27 @@ public sealed record Question(long Id, string? ViewName, string? ColumnName, str
 /// <summary>Reads the catalog from the dictionary.</summary>
 public static class CatalogReader
 {
-    // One statement, four result sets, in the order the reader consumes them. Everything the model must
-    // not see stays out here: a hidden or quarantined view, a hidden, sensitive or quarantined column.
-    // A column without a nature is read, with a null code.
+    // One statement, five result sets, in the order the reader consumes them. Everything the model must
+    // not see stays out here: a hidden or quarantined view, a quarantined column, and the values of an
+    // export only column, which are data. A column without a nature is read, with a null code.
     private const string Sql = """
         select  v.view_id, v.view_name, v.label, v.answers
         from    facets_dict.views as v
         where   v.is_exposed_to_model = 1 and v.is_quarantined = 0
         order by v.view_name;
 
-        select  c.column_id, c.view_id, c.column_name, c.label, c.description, c.nature_code, c.sql_type, c.unit, c.divisor
+        select  c.column_id, c.view_id, c.column_name, c.label, c.description, c.nature_code, c.sql_type, c.unit, c.divisor,
+                c.is_export_only
         from    facets_dict.columns as c
         join    facets_dict.views as v on v.view_id = c.view_id
         where   v.is_exposed_to_model = 1 and v.is_quarantined = 0
-        and     c.is_exposed_to_model = 1 and c.is_sensitive = 0 and c.is_quarantined = 0
+        and     c.is_quarantined = 0
         order by c.view_id, c.ordinal_position;
 
         select  cv.column_id, cv.code_value, cv.label, cv.description
         from    facets_dict.column_values as cv
+        join    facets_dict.columns as c on c.column_id = cv.column_id
+        where   c.is_export_only = 0
         order by cv.column_id, cv.code_value;
 
         select  isnull((select top (1) note from facets_dict.domain_notes where domain_note_id = 1), N'');
@@ -80,10 +84,11 @@ public static class CatalogReader
             views.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
 
         await reader.NextResultAsync(cancellationToken);
-        var columns = new List<(long Id, long ViewId, string Name, string Label, string Description, string? NatureCode, string SqlType, string Unit, decimal Divisor)>();
+        var columns = new List<(long Id, long ViewId, string Name, string Label, string Description, string? NatureCode, string SqlType, string Unit, decimal Divisor, bool IsExportOnly)>();
         while (await reader.ReadAsync(cancellationToken))
             columns.Add((reader.GetInt64(0), reader.GetInt64(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-                         reader.IsDBNull(5) ? null : reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetDecimal(8)));
+                         reader.IsDBNull(5) ? null : reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetDecimal(8),
+                         reader.GetBoolean(9)));
 
         await reader.NextResultAsync(cancellationToken);
         var values = new List<(long ColumnId, CodeValue Value)>();
@@ -108,7 +113,7 @@ public static class CatalogReader
         var valuesByColumn = values.ToLookup(value => value.ColumnId, value => value.Value);
         var columnsByView = columns.ToLookup(column => column.ViewId, column => new FacetColumn(
             column.Name, column.Label, column.Description, NatureRules.Parse(column.NatureCode), column.SqlType,
-            column.Unit, column.Divisor, [.. valuesByColumn[column.Id]]));
+            column.Unit, column.Divisor, column.IsExportOnly, [.. valuesByColumn[column.Id]]));
 
         return new Catalog(
             [.. views.Select(view => new FacetView(view.Name, view.Label, view.Answers, [.. columnsByView[view.Id]]))],

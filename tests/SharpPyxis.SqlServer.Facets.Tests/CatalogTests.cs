@@ -45,11 +45,14 @@ public sealed class CatalogTests(DemoDatabase database)
     }
 
     [Fact]
-    public async Task Hides_a_sensitive_column_and_keeps_one_without_nature()
+    public async Task Shows_an_export_only_column_and_one_without_nature()
     {
         var customers = (await ReadAsync()).FindView("v_customers")!;
 
-        Assert.Null(customers.FindColumn("email"));
+        var email = customers.FindColumn("email")!;
+        Assert.True(email.IsExportOnly);
+        Assert.Empty(email.Values);
+        Assert.False(customers.FindColumn("city")!.IsExportOnly);
 
         var createdOn = customers.FindColumn("created_on")!;
         Assert.Null(createdOn.Nature);

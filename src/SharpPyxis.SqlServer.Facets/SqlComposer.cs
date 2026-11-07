@@ -130,6 +130,14 @@ public static class SqlComposer
             return null;
         }
 
+        // Named by describe_view, so it can be asked for: refused wherever it is, since a dimension would
+        // return its values, min and max one of them, and a filter would tell whether a known value is there.
+        if (column.IsExportOnly)
+        {
+            faults.Add($"Column '{column.Name}' is for export only: its values may go to an exported file, never to a result.");
+            return null;
+        }
+
         if (column.Nature is null)
         {
             faults.Add($"Column '{column.Name}' has no nature yet, so the server cannot tell what it allows: ask the owner of the dictionary to set one.");

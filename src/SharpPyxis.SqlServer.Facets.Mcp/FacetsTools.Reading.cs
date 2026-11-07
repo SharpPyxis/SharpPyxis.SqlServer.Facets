@@ -203,6 +203,9 @@ internal sealed partial class FacetsTools
 
     private static string Allows(FacetColumn column)
     {
+        if (column.IsExportOnly)
+            return "export only: its values may go to an exported file, never to a result";
+
         if (column.Nature is not { } nature)
             return "not queryable yet: the owner has to set its nature";
 

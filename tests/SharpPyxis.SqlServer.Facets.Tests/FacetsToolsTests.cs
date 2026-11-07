@@ -32,8 +32,8 @@ public sealed class FacetsToolsTests
         Assert.Equal("Refused: a unit applies to an amount, a quantity or a rate only.",
             FacetsTools.Explain(547, "The UPDATE statement conflicted with the CHECK constraint \"ck_columns_unit_on_measure\". The conflict occurred in database \"demo\", table \"facets_dict.columns\"."));
 
-        Assert.Equal("Refused: a sensitive column cannot be exposed to the model: hide it, or make it not sensitive.",
-            FacetsTools.Explain(547, "... CHECK constraint \"ck_columns_sensitive_not_exposed\". ..."));
+        Assert.Equal("Refused: Only the designer opens a column to queries, under their own login: the agent may only make it export only.",
+            FacetsTools.Explain(50002, "Only the designer opens a column to queries, under their own login: the agent may only make it export only."));
 
         Assert.StartsWith("Refused: 'that' is not a nature: use amount, quantity,",
             FacetsTools.Explain(547, "... FOREIGN KEY constraint \"fk_columns_nature\". ..."));

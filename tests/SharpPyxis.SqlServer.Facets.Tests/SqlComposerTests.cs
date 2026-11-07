@@ -64,12 +64,28 @@ public sealed class SqlComposerTests(DemoDatabase database)
         var faults = Refusal(catalog, new QueryRequest
         {
             View = "v_customers",
-            Dimensions = [new("email"), new("created_on")],
+            Dimensions = [new("phone"), new("created_on")],
             Measures = [new("paid_cents", Aggregation.Sum)],
         }).Faults;
         Assert.Equal(2, faults.Count);
-        Assert.Contains("has no column 'email'", faults[0]);
+        Assert.Contains("has no column 'phone'", faults[0]);
         Assert.Contains("'created_on' has no nature yet", faults[1]);
+    }
+
+    [Fact]
+    public async Task Refuses_an_export_only_column_wherever_it_is()
+    {
+        var faults = Refusal(await CatalogAsync(), new QueryRequest
+        {
+            View = "v_customers",
+            Dimensions = [new("email")],
+            Measures = [new("email", Aggregation.CountDistinct)],
+            Filters = [new("email", FilterOperator.Equals, ["someone@example.com"])],
+        }).Faults;
+
+        Assert.Equal(3, faults.Count);
+        Assert.All(faults, fault => Assert.Equal(
+            "Column 'email' is for export only: its values may go to an exported file, never to a result.", fault));
     }
 
     [Fact]

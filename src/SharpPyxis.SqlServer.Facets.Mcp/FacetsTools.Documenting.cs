@@ -13,27 +13,28 @@ internal sealed partial class FacetsTools
     /// <summary>Sets what a view is and the questions it answers.</summary>
     [McpServerTool(Name = "annotate_view", Idempotent = true, Destructive = false)]
     [Description("Writes in the dictionary of the SQL Server database what a view is: its label, the questions it "
-               + "answers, whether the agent may see it. Call it on the word of the user, with what they said; a "
+               + "answers; it can also hide the view. Call it on the word of the user, with what they said; a "
                + "parameter left out changes nothing.")]
     public Task<string> AnnotateView(
         McpServer server,
         [Description("Name of the view, as list_views gives it.")] string view,
         [Description("What the view is, in a few words.")] string? label = null,
         [Description("The questions the view answers, in the words of a request.")] string? answers = null,
-        [Description("False hides the view from the agent while it is being annotated.")] bool? exposedToModel = null,
+        [Description("True hides the view from the agent. Only the designer of the database shows a hidden view again.")] bool? hide = null,
         CancellationToken cancellationToken = default) =>
         RunProcedureAsync("facets_dict.annotate_view", new()
         {
             ["@view_name"] = view, ["@author"] = Author(server), ["@label"] = label, ["@answers"] = answers,
-            ["@is_exposed_to_model"] = exposedToModel,
+            // A false is a request to show the view again: passed on, so that the procedure refuses it in words.
+            ["@is_exposed_to_model"] = hide is { } hidden ? !hidden : null,
         }, $"View '{view}' annotated. describe_view shows it as it is now.", cancellationToken);
 
     /// <summary>Sets what a column is: its nature first, then what the nature allows.</summary>
     [McpServerTool(Name = "annotate_column", Idempotent = true, Destructive = false)]
     [Description("Writes in the dictionary of the SQL Server database what a column of a view is: its nature, "
                + "which decides what the server allows on it, its label and description, its unit and divisor "
-               + "for a measure, whether the agent may see it, whether it is sensitive. Call it on the word of "
-               + "the user; a parameter left out changes nothing. A column without a nature cannot be queried.")]
+               + "for a measure; it can also make the column export only. Call it on the word of the user; a "
+               + "parameter left out changes nothing. A column without a nature cannot be queried.")]
     public Task<string> AnnotateColumn(
         McpServer server,
         [Description("Name of the view, as list_views gives it.")] string view,
@@ -43,8 +44,8 @@ internal sealed partial class FacetsTools
         [Description("What the agent must know to read it right: what it counts, what it excludes, how it is computed.")] string? description = null,
         [Description("The unit of a measure, as shown to the agent: EUR, kg, %. Measures only.")] string? unit = null,
         [Description("What the stored value is divided by before it is shown: 100 for cents stored as integers. Amounts and quantities only.")] decimal? divisor = null,
-        [Description("False keeps the column out of what the agent sees and queries.")] bool? exposedToModel = null,
-        [Description("True for a value that may go to a file on the workstation, never to the model. A sensitive column cannot be exposed.")] bool? sensitive = null,
+        [Description("True makes the column export only: its values may go to an exported file, never to a result. "
+                   + "Only the designer of the database opens a column to queries.")] bool? exportOnly = null,
         CancellationToken cancellationToken = default)
     {
         if (nature is { Length: > 0 } && NatureRules.Parse(nature) is null)
@@ -54,7 +55,7 @@ internal sealed partial class FacetsTools
         {
             ["@view_name"] = view, ["@column_name"] = column, ["@author"] = Author(server),
             ["@label"] = label, ["@description"] = description, ["@nature_code"] = nature?.ToLowerInvariant(),
-            ["@unit"] = unit, ["@divisor"] = divisor, ["@is_exposed_to_model"] = exposedToModel, ["@is_sensitive"] = sensitive,
+            ["@unit"] = unit, ["@divisor"] = divisor, ["@is_export_only"] = exportOnly,
         }, $"Column '{column}' of '{view}' annotated. describe_view shows it as it is now.", cancellationToken);
     }
 
@@ -204,13 +205,14 @@ internal sealed partial class FacetsTools
     private static string UnknownNature(string nature) =>
         $"'{nature}' is not a nature: use {string.Join(", ", Enum.GetValues<Nature>().Select(NatureRules.Code))}.";
 
-    // What a procedure or a constraint refused, in words the agent can act on. 50001 is the procedures'
-    // own error, already worded; 547 is a check or a foreign key, named in the message and translated here.
+    // What a procedure or a constraint refused, in words the agent can act on. 50001, something not
+    // found, and 50002, an opening only the designer makes, are the procedures' own errors, already
+    // worded; 547 is a check or a foreign key, named in the message and translated here.
     private static string Explain(SqlException exception) => Explain(exception.Number, exception.Message);
 
     internal static string Explain(int number, string message)
     {
-        if (number == 50001)
+        if (number is 50001 or 50002)
             return $"Refused: {message}";
 
         if (number == 547 && ConstraintName().Match(message) is { Success: true } match)
@@ -219,7 +221,6 @@ internal sealed partial class FacetsTools
                 "ck_columns_unit_on_measure" => "a unit applies to an amount, a quantity or a rate only.",
                 "ck_columns_divisor_on_measure" => "a divisor applies to an amount or a quantity only.",
                 "ck_columns_divisor_positive" => "the divisor must be positive.",
-                "ck_columns_sensitive_not_exposed" => "a sensitive column cannot be exposed to the model: hide it, or make it not sensitive.",
                 "fk_columns_nature" => UnknownNature("that"),
                 "ck_questions_question_len" => "the question is empty.",
                 "ck_views_view_name_len" or "ck_columns_column_name_len" => "the name is empty.",
