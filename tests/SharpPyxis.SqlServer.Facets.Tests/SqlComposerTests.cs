@@ -180,4 +180,27 @@ public sealed class SqlComposerTests(DemoDatabase database)
         });
         Assert.Contains("'ten' is not a number for 'line_amount_cents'.", refusal.Faults);
     }
+
+    [Theory]
+    [InlineData(500, null, 500)]
+    [InlineData(500, 300, 300)]
+    [InlineData(500, 900, 500)]
+    [InlineData(2, null, 2)]
+    public async Task The_cap_of_a_view_replaces_the_default_above_and_below(int maxRows, int? top, int limit)
+    {
+        var catalog = await CatalogAsync();
+        var sales = catalog.FindView("v_sales")! with { MaxRows = maxRows };
+        catalog = catalog with { Views = [sales] };
+
+        var query = SqlComposer.Compose(catalog, new QueryRequest
+        {
+            View = "v_sales",
+            Dimensions = [new("sale_id")],
+            Top = top,
+        }, 200);
+
+        Assert.StartsWith($"select top ({limit + 1}) ", query.Sql);
+        Assert.Equal(limit, query.Limit);
+        Assert.Equal(maxRows, query.Cap);
+    }
 }

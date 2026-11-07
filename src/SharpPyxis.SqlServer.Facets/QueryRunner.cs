@@ -36,7 +36,7 @@ public static class QueryRunner
             rows.Add(row);
         }
 
-        return new QueryResult(query.Columns, rows, truncated);
+        return new QueryResult(query.Columns, rows, truncated, query.Cap);
     }
 
     /// <summary>
@@ -76,8 +76,11 @@ public static class QueryRunner
     }
 }
 
-/// <summary>The rows of a query, as text, with the columns they answer to.</summary>
-public sealed record QueryResult(IReadOnlyList<ResultColumn> Columns, IReadOnlyList<string[]> Rows, bool Truncated)
+/// <summary>
+/// The rows of a query, as text, with the columns they answer to. <paramref name="Cap"/> is the most rows
+/// the view allows, which says whether a cut came from the request or from the view.
+/// </summary>
+public sealed record QueryResult(IReadOnlyList<ResultColumn> Columns, IReadOnlyList<string[]> Rows, bool Truncated, int Cap)
 {
     /// <summary>
     /// The result as the model reads it: a header line of aliases, one line per row, tab-separated,
@@ -90,8 +93,14 @@ public sealed record QueryResult(IReadOnlyList<ResultColumn> Columns, IReadOnlyL
         foreach (var row in Rows)
             text.AppendJoin('\t', row).Append('\n');
 
-        if (Truncated)
-            text.Append($"({Rows.Count} rows shown, there are more: narrow the request, or order it so the rows that matter come first.)\n");
+        // Cut at the cap, the agent cannot ask for more, and splitting the request in two would cost
+        // more calls and a result it reads badly: the cap is the owner's to raise, so it is told to say so.
+        if (Truncated && Rows.Count < Cap)
+            text.Append($"({Rows.Count} rows shown, as top asked, and there are more: this view returns up to {Cap}.)\n");
+        else if (Truncated)
+            text.Append($"({Rows.Count} rows shown, the most this view returns, and there are more: narrow the request, or order it "
+                        + "so the rows that matter come first. If the answer needs them all, say so with ask_question: the owner "
+                        + "of the dictionary sets the cap of each view.)\n");
 
         return text.ToString();
     }

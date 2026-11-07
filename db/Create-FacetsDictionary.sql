@@ -78,7 +78,7 @@ go
 -- ── views ────────────────────────────────────────────────────────────────────────────────────────────
 -- One row per view of the schema facets that the catalog refresh has seen. A view that disappears from
 -- the schema is quarantined, never deleted: its annotations wait for it. Nothing in this schema is
--- deleted by the server.
+-- deleted by the server. max_rows is the designer's, like opening a column: no procedure writes it.
 create table facets_dict.views
 (
     view_id             bigint            not null identity (1, 1),
@@ -86,6 +86,7 @@ create table facets_dict.views
     label               nvarchar(200)     not null constraint df_views_label default N'',
     answers             nvarchar(2000)    not null constraint df_views_answers default N'',
     is_exposed_to_model bit               not null constraint df_views_is_exposed_to_model default 1,
+    max_rows            int               null,
     is_quarantined      bit               not null constraint df_views_is_quarantined default 0,
     quarantined_at      datetimeoffset(3) null,
     last_seen_at        datetimeoffset(3) not null constraint df_views_last_seen_at default sysdatetimeoffset(),
@@ -96,6 +97,7 @@ create table facets_dict.views
     constraint pk_views primary key (view_id),
     constraint uq_views_view_name unique (view_name),
     constraint ck_views_view_name_len check (len(view_name) >= 1),
+    constraint ck_views_max_rows_positive check (max_rows >= 1),
     constraint ck_views_quarantine check ((is_quarantined = 0 and quarantined_at is null)
                                        or (is_quarantined = 1 and quarantined_at is not null))
 );
@@ -231,6 +233,9 @@ exec sys.sp_addextendedproperty @name = N'MS_Description',
 exec sys.sp_addextendedproperty @name = N'MS_Description',
     @value = N'0 hides the view from the agent. The agent may hide a view; only the designer shows it again, under their own login.',
     @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'views', @level2type = N'COLUMN', @level2name = N'is_exposed_to_model';
+exec sys.sp_addextendedproperty @name = N'MS_Description',
+    @value = N'The most rows a query on this view returns to the agent, above or below the default of the server (FACETS_MAX_ROWS). Null: that default. The designer sets it, under their own login. It bounds the volume of one call, not what the agent can read.',
+    @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'views', @level2type = N'COLUMN', @level2name = N'max_rows';
 exec sys.sp_addextendedproperty @name = N'MS_Description',
     @value = N'1 when the last catalog refresh did not find the view in the schema. Its annotations wait for it.',
     @level0type = N'SCHEMA', @level0name = N'facets_dict', @level1type = N'TABLE', @level1name = N'views', @level2type = N'COLUMN', @level2name = N'is_quarantined';

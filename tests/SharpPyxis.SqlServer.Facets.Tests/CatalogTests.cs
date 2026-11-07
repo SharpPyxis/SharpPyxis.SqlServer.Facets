@@ -72,4 +72,14 @@ public sealed class CatalogTests(DemoDatabase database)
         Assert.NotNull(question.AnsweredAt);
         Assert.StartsWith("No: it is quantity times unit price.", question.Answer);
     }
+
+    [Fact]
+    public async Task Reads_the_cap_the_designer_set_on_a_view()
+    {
+        var catalog = await ReadAsync();
+
+        Assert.Equal(50, catalog.FindView("v_customers")!.MaxRows);
+        Assert.Null(catalog.FindView("v_sales")!.MaxRows);
+        Assert.Equal(200, catalog.FindView("v_sales")!.Cap(200));
+    }
 }

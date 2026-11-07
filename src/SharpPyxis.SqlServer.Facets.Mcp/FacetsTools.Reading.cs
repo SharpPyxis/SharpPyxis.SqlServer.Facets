@@ -50,8 +50,9 @@ internal sealed partial class FacetsTools
     [McpServerTool(Name = "describe_view", ReadOnly = true, Idempotent = true)]
     [Description("Describes one view of the SQL Server database: each column with its nature, its label and "
                + "description, its unit, what the server allows on it (grouping, aggregations, filter "
-               + "operators), the values of its codes, and the questions already asked about it. Call it before "
-               + "a query on the view: a query may only name what this describes.")]
+               + "operators), the values of its codes, the most rows a query on it returns, and the questions "
+               + "already asked about it. Call it before a query on the view: a query may only name what this "
+               + "describes.")]
     public async Task<string> DescribeView(
         [Description("Name of the view, as list_views gives it.")] string view,
         CancellationToken cancellationToken)
@@ -67,6 +68,7 @@ internal sealed partial class FacetsTools
         report.Append($"View {found.Name}: {found.Label}\n");
         if (found.Answers.Length > 0)
             report.Append($"Answers: {found.Answers}\n");
+        report.Append($"Rows per query, at most: {found.Cap(settings.MaxRows)}\n");
 
         report.Append("column\tnature\tlabel\tunit\tallows\tdescription\n");
         foreach (var column in found.Columns)
@@ -116,8 +118,8 @@ internal sealed partial class FacetsTools
     [Description("Queries one view of the SQL Server database, aggregated: rows grouped by the dimensions, each "
                + "measure folded by its aggregation, after the filters. Names are those describe_view gives; "
                + "values are text, converted to the type of their column. Amounts come divided by their "
-               + "divisor, in their unit and to the cent, and a filter on them is given in that unit. Returns tab-separated rows with a header, capped by the server: a "
-               + "last line says when there were more. A refused request names every fault to correct.")]
+               + "divisor, in their unit and to the cent, and a filter on them is given in that unit. Returns tab-separated rows with a header, capped by the view as "
+               + "describe_view gives it: a last line says when there were more. A refused request names every fault to correct.")]
     public async Task<string> Query(
         [Description("Name of the view, as list_views gives it.")] string view,
         [Description("Columns that group the rows, in the order of the result. A date takes a level: year, quarter, month, week or day.")]
@@ -128,7 +130,7 @@ internal sealed partial class FacetsTools
         QueryFilter[]? filters = null,
         [Description("Which result column orders the rows: 'dimension' or 'measure', its index in the request, and whether descending. Default: the first measure descending.")]
         QueryOrder? orderBy = null,
-        [Description("How many rows at most. The server caps it; it cannot be raised above the cap.")]
+        [Description("How many rows at most. The view caps it, as describe_view gives it; it cannot be raised above the cap.")]
         int? top = null,
         CancellationToken cancellationToken = default)
     {

@@ -12,11 +12,12 @@ namespace SharpPyxis.SqlServer.Facets;
 public static class SqlComposer
 {
     /// <summary>
-    /// Composes the query. <paramref name="maxRows"/> is the cap of the server: the query asks for one
-    /// row more, so that the runner can tell when the cap was hit.
+    /// Composes the query. <paramref name="defaultMaxRows"/> is the cap of the server, which a view
+    /// replaces with its own, above or below. The query asks for one row more, so that the runner can
+    /// tell when the limit was hit.
     /// </summary>
     /// <exception cref="QueryRefusedException">The request names what the catalog does not have, or asks what a nature does not allow.</exception>
-    public static ComposedQuery Compose(Catalog catalog, QueryRequest request, int maxRows)
+    public static ComposedQuery Compose(Catalog catalog, QueryRequest request, int defaultMaxRows)
     {
         var faults = new List<string>();
 
@@ -106,7 +107,8 @@ public static class SqlComposer
         if (faults.Count > 0)
             throw new QueryRefusedException(faults);
 
-        var top = Math.Min(request.Top is > 0 and var asked ? asked : maxRows, maxRows);
+        var cap = view.Cap(defaultMaxRows);
+        var top = Math.Min(request.Top is > 0 and var asked ? asked : cap, cap);
 
         // LF whatever the machine: the SQL is logged and compared, and a line ending is not a choice to leave to the host.
         var sql = new StringBuilder();
@@ -118,7 +120,7 @@ public static class SqlComposer
             sql.Append("group by ").AppendJoin(", ", groupBy).Append('\n');
         sql.Append("order by ").Append(orderBy).Append(';');
 
-        return new ComposedQuery(sql.ToString(), parameters, columns, top);
+        return new ComposedQuery(sql.ToString(), parameters, columns, top, cap);
     }
 
     private static FacetColumn? Resolve(FacetView view, string name, List<string> faults)
@@ -366,8 +368,12 @@ public static class SqlComposer
     }
 }
 
-/// <summary>The SQL and its parameters, with what each result column is.</summary>
-public sealed record ComposedQuery(string Sql, IReadOnlyList<QueryParameter> Parameters, IReadOnlyList<ResultColumn> Columns, int Limit);
+/// <summary>
+/// The SQL and its parameters, with what each result column is. <paramref name="Limit"/> is the most
+/// rows it returns, <paramref name="Cap"/> the most the view allows: the limit is below the cap when the
+/// request asked for fewer.
+/// </summary>
+public sealed record ComposedQuery(string Sql, IReadOnlyList<QueryParameter> Parameters, IReadOnlyList<ResultColumn> Columns, int Limit, int Cap);
 
 /// <summary>One parameter of a composed query, typed after its column.</summary>
 public sealed record QueryParameter(string Name, SqlDbType Type, object Value);

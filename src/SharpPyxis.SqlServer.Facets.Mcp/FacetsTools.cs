@@ -242,7 +242,7 @@ internal sealed partial class FacetsTools(FacetsSettings settings, ConnectionSto
             Executable: {Environment.ProcessPath}
             Version: {version}
             Connections: {connections}
-            Rows returned by a query, at most: {settings.MaxRows} (FACETS_MAX_ROWS)
+            Rows returned by a query, at most: {settings.MaxRows} (FACETS_MAX_ROWS), unless the view sets its own
             Selected connection: {selected}
 
             Connections are managed from a console, as "{Environment.ProcessPath}" followed by:

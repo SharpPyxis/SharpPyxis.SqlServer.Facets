@@ -233,6 +233,14 @@ join    facets_dict.views as w on w.view_id = c.view_id
 where   w.view_name in (N'v_sales', N'v_customers')
 and     c.column_name <> N'email';
 
+-- The cap of a view is the designer's too. A view with one row per customer returns fewer rows than
+-- the default of the server; v_sales keeps that default.
+update  facets_dict.views
+set     max_rows    = 50,
+        modified_at = sysdatetimeoffset(),
+        modified_by = @by
+where   view_name = N'v_customers';
+
 -- A question an agent asked, and its answer.
 declare @question table (question_id bigint);
 insert into @question exec facets_dict.ask_question @author = N'demo agent',

@@ -14,9 +14,15 @@ public sealed record Catalog(IReadOnlyList<FacetView> Views, string DomainNote, 
         Views.FirstOrDefault(view => string.Equals(view.Name, name, StringComparison.OrdinalIgnoreCase));
 }
 
-/// <summary>One view of the schema <c>facets</c>, exposed to the model and present in the schema.</summary>
-public sealed record FacetView(string Name, string Label, string Answers, IReadOnlyList<FacetColumn> Columns)
+/// <summary>
+/// One view of the schema <c>facets</c>, exposed to the model and present in the schema.
+/// <paramref name="MaxRows"/> is the cap the designer set on it, or null for the default of the server.
+/// </summary>
+public sealed record FacetView(string Name, string Label, string Answers, int? MaxRows, IReadOnlyList<FacetColumn> Columns)
 {
+    /// <summary>The most rows a query on this view returns: its own cap, or <paramref name="defaultMaxRows"/>.</summary>
+    public int Cap(int defaultMaxRows) => MaxRows ?? defaultMaxRows;
+
     /// <summary>The column of that name, or null.</summary>
     public FacetColumn? FindColumn(string name) =>
         Columns.FirstOrDefault(column => string.Equals(column.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -45,7 +51,7 @@ public static class CatalogReader
     // not see stays out here: a hidden or quarantined view, a quarantined column, and the values of an
     // export only column, which are data. A column without a nature is read, with a null code.
     private const string Sql = """
-        select  v.view_id, v.view_name, v.label, v.answers
+        select  v.view_id, v.view_name, v.label, v.answers, v.max_rows
         from    facets_dict.views as v
         where   v.is_exposed_to_model = 1 and v.is_quarantined = 0
         order by v.view_name;
@@ -79,9 +85,10 @@ public static class CatalogReader
         using var command = new SqlCommand(Sql, connection);
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
-        var views = new List<(long Id, string Name, string Label, string Answers)>();
+        var views = new List<(long Id, string Name, string Label, string Answers, int? MaxRows)>();
         while (await reader.ReadAsync(cancellationToken))
-            views.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            views.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                       reader.IsDBNull(4) ? null : reader.GetInt32(4)));
 
         await reader.NextResultAsync(cancellationToken);
         var columns = new List<(long Id, long ViewId, string Name, string Label, string Description, string? NatureCode, string SqlType, string Unit, decimal Divisor, bool IsExportOnly)>();
@@ -116,7 +123,7 @@ public static class CatalogReader
             column.Unit, column.Divisor, column.IsExportOnly, [.. valuesByColumn[column.Id]]));
 
         return new Catalog(
-            [.. views.Select(view => new FacetView(view.Name, view.Label, view.Answers, [.. columnsByView[view.Id]]))],
+            [.. views.Select(view => new FacetView(view.Name, view.Label, view.Answers, view.MaxRows, [.. columnsByView[view.Id]]))],
             note,
             questions);
     }

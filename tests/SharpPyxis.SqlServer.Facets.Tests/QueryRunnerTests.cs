@@ -137,7 +137,9 @@ public sealed class QueryRunnerTests(DemoDatabase database)
         Assert.Equal(3, result.Rows.Count);
         Assert.True(result.Truncated);
         Assert.Equal(["100101", "100102", "100201"], result.Rows.Select(row => row[0]));
-        Assert.EndsWith("(3 rows shown, there are more: narrow the request, or order it so the rows that matter come first.)\n", result.ToTsv());
+        Assert.EndsWith("(3 rows shown, the most this view returns, and there are more: narrow the request, or order it "
+                        + "so the rows that matter come first. If the answer needs them all, say so with ask_question: the owner "
+                        + "of the dictionary sets the cap of each view.)\n", result.ToTsv());
     }
 
     [Fact]
@@ -192,5 +194,7 @@ public sealed class QueryRunnerTests(DemoDatabase database)
         Assert.True(result.Truncated);
         Assert.Equal("Épicerie du Port", result.Rows[0][0]);
         Assert.Equal("2040", result.Rows[0][1]);
+        // Cut by the request, not by the view: the agent may ask for more, up to the cap of the view.
+        Assert.EndsWith("(2 rows shown, as top asked, and there are more: this view returns up to 50.)\n", result.ToTsv());
     }
 }
