@@ -11,6 +11,7 @@ public sealed class FacetsToolsTests
 
         Assert.Equal(Aggregation.CountDistinct, FacetsTools.Parse(FacetsTools.Aggregations, "count distinct", "aggregation", faults));
         Assert.Equal(FilterOperator.GreaterOrEqual, FacetsTools.Parse(FacetsTools.Operators, "Greater Or Equal", "operator", faults));
+        Assert.Equal(FilterOperator.NotEmpty, FacetsTools.Parse(FacetsTools.Operators, "not empty", "operator", faults));
         Assert.Equal(DateLevel.Month, FacetsTools.Parse(FacetsTools.Levels, "month", "level", faults));
         Assert.Null(FacetsTools.Parse(FacetsTools.Levels, null, "level", faults));
         Assert.Empty(faults);

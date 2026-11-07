@@ -19,9 +19,19 @@ public sealed class NatureRulesTests
     [Fact]
     public void Text_is_searched_and_never_grouped()
     {
-        Assert.Equal([FilterOperator.Contains, FilterOperator.Empty], NatureRules.Operators(Nature.Text));
+        Assert.Equal([FilterOperator.Contains, FilterOperator.Empty, FilterOperator.NotEmpty], NatureRules.Operators(Nature.Text));
         Assert.False(NatureRules.Groups(Nature.Text));
         Assert.DoesNotContain(Aggregation.CountDistinct, NatureRules.Aggregations(Nature.Text));
+    }
+
+    [Fact]
+    public void Not_empty_is_allowed_wherever_empty_is()
+    {
+        foreach (var nature in Enum.GetValues<Nature>())
+        {
+            var operators = NatureRules.Operators(nature);
+            Assert.Equal(operators.Contains(FilterOperator.Empty), operators.Contains(FilterOperator.NotEmpty));
+        }
     }
 
     [Fact]

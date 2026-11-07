@@ -36,7 +36,7 @@ public sealed record MeasureRequest(string Column, Aggregation Aggregation);
 /// <summary>
 /// A condition on a column. The operator decides how many values it takes: one for a comparison,
 /// two for <see cref="FilterOperator.Between"/>, one or more for <see cref="FilterOperator.In"/>,
-/// none for <see cref="FilterOperator.Empty"/>.
+/// none for <see cref="FilterOperator.Empty"/> and <see cref="FilterOperator.NotEmpty"/>.
 /// </summary>
 public sealed record FilterRequest(string Column, FilterOperator Operator, IReadOnlyList<string> Values);
 

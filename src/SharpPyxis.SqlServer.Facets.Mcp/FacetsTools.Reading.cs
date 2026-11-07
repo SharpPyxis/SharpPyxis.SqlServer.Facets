@@ -126,7 +126,7 @@ internal sealed partial class FacetsTools
         QueryDimension[]? dimensions = null,
         [Description("Columns folded over each group, with an aggregation: sum, avg, min, max, count or count distinct.")]
         QueryMeasure[]? measures = null,
-        [Description("Conditions every row must satisfy. Operators: equals, in, between, less, less or equal, greater, greater or equal, contains, empty.")]
+        [Description("Conditions every row must satisfy. Operators: equals, in, between, less, less or equal, greater, greater or equal, contains, empty, not empty.")]
         QueryFilter[]? filters = null,
         [Description("Which result column orders the rows: 'dimension' or 'measure', its index in the request, and whether descending. Default: the first measure descending.")]
         QueryOrder? orderBy = null,
@@ -266,12 +266,12 @@ public sealed record QueryFilter
     [Description("The column, as describe_view names it.")]
     public required string Column { get; init; }
 
-    /// <summary>equals, in, between, less, less or equal, greater, greater or equal, contains or empty, among what describe_view allows.</summary>
-    [Description("equals, in, between, less, less or equal, greater, greater or equal, contains or empty, among what describe_view allows on the column.")]
+    /// <summary>equals, in, between, less, less or equal, greater, greater or equal, contains, empty or not empty, among what describe_view allows.</summary>
+    [Description("equals, in, between, less, less or equal, greater, greater or equal, contains, empty or not empty, among what describe_view allows on the column.")]
     public required string Operator { get; init; }
 
-    /// <summary>The values, as text: one for a comparison, two for between, one or more for in, none for empty.</summary>
-    [Description("The values, as text: one for a comparison, two for between, one or more for in, none for empty. A date as 2026-01-31, a boolean as true or false, an amount in its unit as results give it.")]
+    /// <summary>The values, as text: one for a comparison, two for between, one or more for in, none for empty and not empty.</summary>
+    [Description("The values, as text: one for a comparison, two for between, one or more for in, none for empty and not empty. A date as 2026-01-31, a boolean as true or false, an amount in its unit as results give it.")]
     public string[]? Values { get; init; }
 }
 

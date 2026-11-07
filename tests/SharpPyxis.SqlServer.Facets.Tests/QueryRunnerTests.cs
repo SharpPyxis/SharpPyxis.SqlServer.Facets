@@ -197,4 +197,22 @@ public sealed class QueryRunnerTests(DemoDatabase database)
         // Cut by the request, not by the view: the agent may ask for more, up to the cap of the view.
         Assert.EndsWith("(2 rows shown, as top asked, and there are more: this view returns up to 50.)\n", result.ToTsv());
     }
+
+    [Fact]
+    public async Task Empty_and_not_empty_split_the_rows_between_them()
+    {
+        async Task<long> CountOrdersAsync(params FilterRequest[] filters) => long.Parse((await RunAsync(new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("order_id", Aggregation.CountDistinct)],
+            Filters = filters,
+        })).Rows[0][0]);
+
+        var all = await CountOrdersAsync();
+        var withNote = await CountOrdersAsync(new FilterRequest("note", FilterOperator.NotEmpty, []));
+        var withoutNote = await CountOrdersAsync(new FilterRequest("note", FilterOperator.Empty, []));
+
+        Assert.InRange(withNote, 1, all - 1);
+        Assert.Equal(all, withNote + withoutNote);
+    }
 }

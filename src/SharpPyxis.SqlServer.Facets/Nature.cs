@@ -89,6 +89,12 @@ public enum FilterOperator
 
     /// <summary>The column is null, or an empty string.</summary>
     Empty,
+
+    /// <summary>
+    /// The column holds a value: neither null nor an empty string. The one negative operator, for "the
+    /// customers who have an e-mail"; a general negation waits for a real case.
+    /// </summary>
+    NotEmpty,
 }
 
 /// <summary>The level a date groups rows at.</summary>
@@ -126,13 +132,14 @@ public static class NatureRules
     private static readonly FilterOperator[] Ordered =
     [
         FilterOperator.Equals, FilterOperator.Between, FilterOperator.Less, FilterOperator.LessOrEqual,
-        FilterOperator.Greater, FilterOperator.GreaterOrEqual, FilterOperator.Empty,
+        FilterOperator.Greater, FilterOperator.GreaterOrEqual, FilterOperator.Empty, FilterOperator.NotEmpty,
     ];
-    private static readonly FilterOperator[] Listed = [FilterOperator.Equals, FilterOperator.In, FilterOperator.Empty];
-    private static readonly FilterOperator[] Searched = [FilterOperator.Equals, FilterOperator.In, FilterOperator.Contains, FilterOperator.Empty];
+    private static readonly FilterOperator[] Listed = [FilterOperator.Equals, FilterOperator.In, FilterOperator.Empty, FilterOperator.NotEmpty];
+    private static readonly FilterOperator[] Searched =
+        [FilterOperator.Equals, FilterOperator.In, FilterOperator.Contains, FilterOperator.Empty, FilterOperator.NotEmpty];
     private static readonly FilterOperator[] Keys = [FilterOperator.Equals, FilterOperator.In];
     private static readonly FilterOperator[] Flags = [FilterOperator.Equals];
-    private static readonly FilterOperator[] Free = [FilterOperator.Contains, FilterOperator.Empty];
+    private static readonly FilterOperator[] Free = [FilterOperator.Contains, FilterOperator.Empty, FilterOperator.NotEmpty];
 
     /// <summary>The aggregations the composer accepts on a column of this nature.</summary>
     public static IReadOnlyList<Aggregation> Aggregations(Nature nature) => nature switch

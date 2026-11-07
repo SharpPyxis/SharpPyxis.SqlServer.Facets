@@ -103,7 +103,7 @@ public sealed class SqlComposerTests(DemoDatabase database)
         Assert.Contains("'line_amount_cents' is an amount and cannot group rows", faults[0]);
         Assert.Contains("a level applies to a date only", faults[1]);
         Assert.Contains("sum is not allowed on 'discount_rate', which is a rate: allowed avg, min, max, count", faults[2]);
-        Assert.Contains("equals is not allowed on 'note', which is free text: allowed contains, empty", faults[3]);
+        Assert.Contains("equals is not allowed on 'note', which is free text: allowed contains, empty, not empty", faults[3]);
         Assert.Contains("in on 'status' takes one or more values, not 0", faults[4]);
     }
 
@@ -179,6 +179,30 @@ public sealed class SqlComposerTests(DemoDatabase database)
             Filters = [new("line_amount_cents", FilterOperator.Equals, ["ten"])],
         });
         Assert.Contains("'ten' is not a number for 'line_amount_cents'.", refusal.Faults);
+    }
+
+    [Fact]
+    public async Task Not_empty_excludes_the_empty_string_on_text_only()
+    {
+        var catalog = await CatalogAsync();
+        var query = SqlComposer.Compose(catalog, new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("order_id", Aggregation.CountDistinct)],
+            Filters = [new("note", FilterOperator.NotEmpty, []), new("discount_rate", FilterOperator.NotEmpty, [])],
+        }, 200);
+
+        Assert.Contains("where ([note] is not null and [note] <> N'') and [discount_rate] is not null", query.Sql);
+        Assert.Empty(query.Parameters);
+
+        var refusal = Refusal(catalog, new QueryRequest
+        {
+            View = "v_sales",
+            Measures = [new("order_id", Aggregation.Count)],
+            Filters = [new("note", FilterOperator.NotEmpty, ["x"]), new("order_id", FilterOperator.NotEmpty, [])],
+        });
+        Assert.Contains("not empty on 'note' takes no value, not 1.", refusal.Faults);
+        Assert.Contains("not empty is not allowed on 'order_id', which is an identifier: allowed equals, in.", refusal.Faults);
     }
 
     [Theory]

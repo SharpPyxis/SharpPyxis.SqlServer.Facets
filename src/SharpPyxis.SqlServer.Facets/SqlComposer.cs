@@ -190,7 +190,7 @@ public static class SqlComposer
         var kind = SqlType.Of(column.SqlType);
         var expected = filter.Operator switch
         {
-            FilterOperator.Empty => 0,
+            FilterOperator.Empty or FilterOperator.NotEmpty => 0,
             FilterOperator.Between => 2,
             FilterOperator.In => -1,
             _ => 1,
@@ -205,6 +205,9 @@ public static class SqlComposer
 
         if (filter.Operator == FilterOperator.Empty)
             return kind.IsText ? $"({name} is null or {name} = N'')" : $"{name} is null";
+
+        if (filter.Operator == FilterOperator.NotEmpty)
+            return kind.IsText ? $"({name} is not null and {name} <> N'')" : $"{name} is not null";
 
         if (filter.Operator == FilterOperator.Contains)
         {
@@ -319,6 +322,7 @@ public static class SqlComposer
         FilterOperator.GreaterOrEqual => "greater or equal",
         FilterOperator.Contains => "contains",
         FilterOperator.Empty => "empty",
+        FilterOperator.NotEmpty => "not empty",
         _ => filterOperator.ToString().ToLowerInvariant(),
     };
 
