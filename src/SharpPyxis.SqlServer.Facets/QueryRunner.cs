@@ -80,7 +80,7 @@ public static class QueryRunner
 /// The rows of a query, as text, with the columns they answer to. <paramref name="Cap"/> is the most rows
 /// the view allows, which says whether a cut came from the request or from the view.
 /// </summary>
-public sealed record QueryResult(IReadOnlyList<ResultColumn> Columns, IReadOnlyList<string[]> Rows, bool Truncated, int Cap)
+public sealed record QueryResult(IReadOnlyList<ResultColumn> Columns, IReadOnlyList<string[]> Rows, bool Truncated, int? Cap)
 {
     /// <summary>
     /// The result as the model reads it: a header line of aliases, one line per row, tab-separated,

@@ -138,17 +138,7 @@ internal sealed partial class FacetsTools
             return NoConnection;
 
         var faults = new List<string>();
-        var request = new QueryRequest
-        {
-            View = view,
-            Dimensions = [.. (dimensions ?? []).Select(d => new DimensionRequest(d.Column, Parse(Levels, d.Level, "level", faults)))],
-            Measures = [.. (measures ?? []).Select(m => new MeasureRequest(m.Column, Parse(Aggregations, m.Aggregation, "aggregation", faults) ?? Aggregation.Count))],
-            Filters = [.. (filters ?? []).Select(f => new FilterRequest(f.Column, Parse(Operators, f.Operator, "operator", faults) ?? FilterOperator.Equals, f.Values ?? []))],
-            OrderBy = orderBy is null ? null : new OrderRequest(
-                orderBy.By?.Equals("measure", StringComparison.OrdinalIgnoreCase) == true ? OrderTarget.Measure : OrderTarget.Dimension,
-                orderBy.Index, orderBy.Descending),
-            Top = top,
-        };
+        var request = BuildRequest(view, dimensions, measures, filters, orderBy, top, faults);
 
         if (faults.Count > 0)
             return active.Stamp("Refused: " + string.Join(" ", faults));
@@ -179,6 +169,22 @@ internal sealed partial class FacetsTools
 
         return active.Stamp(report.ToString());
     }
+
+    // The request as query and query_to_file both take it. A word the server does not know is a fault,
+    // reported before the composer runs, with a placeholder in its stead.
+    private static QueryRequest BuildRequest(
+        string view, QueryDimension[]? dimensions, QueryMeasure[]? measures, QueryFilter[]? filters, QueryOrder? orderBy, int? top,
+        List<string> faults) => new()
+    {
+        View = view,
+        Dimensions = [.. (dimensions ?? []).Select(d => new DimensionRequest(d.Column, Parse(Levels, d.Level, "level", faults)))],
+        Measures = [.. (measures ?? []).Select(m => new MeasureRequest(m.Column, Parse(Aggregations, m.Aggregation, "aggregation", faults) ?? Aggregation.Count))],
+        Filters = [.. (filters ?? []).Select(f => new FilterRequest(f.Column, Parse(Operators, f.Operator, "operator", faults) ?? FilterOperator.Equals, f.Values ?? []))],
+        OrderBy = orderBy is null ? null : new OrderRequest(
+            orderBy.By?.Equals("measure", StringComparison.OrdinalIgnoreCase) == true ? OrderTarget.Measure : OrderTarget.Dimension,
+            orderBy.Index, orderBy.Descending),
+        Top = top,
+    };
 
     private static async Task<Catalog> ReadCatalogAsync(ActiveConnection active, CancellationToken cancellationToken)
     {

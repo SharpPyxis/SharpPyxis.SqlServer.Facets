@@ -17,7 +17,20 @@ public static class SqlComposer
     /// tell when the limit was hit.
     /// </summary>
     /// <exception cref="QueryRefusedException">The request names what the catalog does not have, or asks what a nature does not allow.</exception>
-    public static ComposedQuery Compose(Catalog catalog, QueryRequest request, int defaultMaxRows)
+    public static ComposedQuery Compose(Catalog catalog, QueryRequest request, int defaultMaxRows) =>
+        Compose(catalog, request, defaultMaxRows, forFile: false);
+
+    /// <summary>
+    /// Composes the same request for a file written on the workstation, which the model never reads: no
+    /// cap, the top of the request only when it gives one, and the export only columns accepted as
+    /// dimensions and measures. As a filter, an export only column takes empty or not empty and nothing
+    /// else: the count of the file would tell whether a known value, such as an e-mail, is in the data.
+    /// </summary>
+    /// <exception cref="QueryRefusedException">The request names what the catalog does not have, or asks what a nature does not allow.</exception>
+    public static ComposedQuery ComposeForFile(Catalog catalog, QueryRequest request) =>
+        Compose(catalog, request, defaultMaxRows: null, forFile: true);
+
+    private static ComposedQuery Compose(Catalog catalog, QueryRequest request, int? defaultMaxRows, bool forFile)
     {
         var faults = new List<string>();
 
@@ -35,7 +48,7 @@ public static class SqlComposer
 
         foreach (var dimension in request.Dimensions)
         {
-            if (Resolve(view, dimension.Column, faults) is not { } column)
+            if (Resolve(view, dimension.Column, faults, forFile) is not { } column)
                 continue;
 
             var nature = column.Nature!.Value;
@@ -62,7 +75,7 @@ public static class SqlComposer
 
         foreach (var measure in request.Measures)
         {
-            if (Resolve(view, measure.Column, faults) is not { } column)
+            if (Resolve(view, measure.Column, faults, forFile) is not { } column)
                 continue;
 
             var nature = column.Nature!.Value;
@@ -86,8 +99,14 @@ public static class SqlComposer
         var where = new List<string>();
         foreach (var filter in request.Filters)
         {
-            if (Resolve(view, filter.Column, faults) is not { } column)
+            if (Resolve(view, filter.Column, faults, forFile) is not { } column)
                 continue;
+
+            if (column.IsExportOnly && filter.Operator is not (FilterOperator.Empty or FilterOperator.NotEmpty))
+            {
+                faults.Add($"Column '{column.Name}' is for export only: a filter on it may only be empty or not empty.");
+                continue;
+            }
 
             var nature = column.Nature!.Value;
             var allowed = NatureRules.Operators(nature);
@@ -107,12 +126,16 @@ public static class SqlComposer
         if (faults.Count > 0)
             throw new QueryRefusedException(faults);
 
-        var cap = view.Cap(defaultMaxRows);
-        var top = Math.Min(request.Top is > 0 and var asked ? asked : cap, cap);
+        // A query asks for one row more than its limit, so that the runner can tell when it was hit; a file
+        // takes what it is asked, all of it when the request gives no top.
+        int? cap = defaultMaxRows is { } fallback ? view.Cap(fallback) : null;
+        int? asked = request.Top is > 0 and var top ? top : null;
+        var limit = cap is { } most ? Math.Min(asked ?? most, most) : asked;
+        var fetched = cap is null ? limit : limit + 1;
 
         // LF whatever the machine: the SQL is logged and compared, and a line ending is not a choice to leave to the host.
         var sql = new StringBuilder();
-        sql.Append($"select top ({top + 1}) ").AppendJoin(", ", select).Append('\n');
+        sql.Append(fetched is { } rows ? $"select top ({rows}) " : "select ").AppendJoin(", ", select).Append('\n');
         sql.Append($"from facets.[{view.Name}]").Append('\n');
         if (where.Count > 0)
             sql.Append("where ").AppendJoin(" and ", where).Append('\n');
@@ -120,10 +143,10 @@ public static class SqlComposer
             sql.Append("group by ").AppendJoin(", ", groupBy).Append('\n');
         sql.Append("order by ").Append(orderBy).Append(';');
 
-        return new ComposedQuery(sql.ToString(), parameters, columns, top, cap);
+        return new ComposedQuery(sql.ToString(), parameters, columns, limit, cap);
     }
 
-    private static FacetColumn? Resolve(FacetView view, string name, List<string> faults)
+    private static FacetColumn? Resolve(FacetView view, string name, List<string> faults, bool forFile)
     {
         var column = view.FindColumn(name);
         if (column is null)
@@ -132,9 +155,10 @@ public static class SqlComposer
             return null;
         }
 
-        // Named by describe_view, so it can be asked for: refused wherever it is, since a dimension would
-        // return its values, min and max one of them, and a filter would tell whether a known value is there.
-        if (column.IsExportOnly)
+        // Named by describe_view, so it can be asked for: refused wherever it is in a query, since a
+        // dimension would return its values, min and max one of them, and a filter would tell whether a
+        // known value is there. A file takes it; its filters are bounded by the caller.
+        if (column.IsExportOnly && !forFile)
         {
             faults.Add($"Column '{column.Name}' is for export only: its values may go to an exported file, never to a result.");
             return null;
@@ -375,9 +399,9 @@ public static class SqlComposer
 /// <summary>
 /// The SQL and its parameters, with what each result column is. <paramref name="Limit"/> is the most
 /// rows it returns, <paramref name="Cap"/> the most the view allows: the limit is below the cap when the
-/// request asked for fewer.
+/// request asked for fewer. For a file there is no cap, and no limit unless the request gave a top.
 /// </summary>
-public sealed record ComposedQuery(string Sql, IReadOnlyList<QueryParameter> Parameters, IReadOnlyList<ResultColumn> Columns, int Limit, int Cap);
+public sealed record ComposedQuery(string Sql, IReadOnlyList<QueryParameter> Parameters, IReadOnlyList<ResultColumn> Columns, int? Limit, int? Cap);
 
 /// <summary>One parameter of a composed query, typed after its column.</summary>
 public sealed record QueryParameter(string Name, SqlDbType Type, object Value);
